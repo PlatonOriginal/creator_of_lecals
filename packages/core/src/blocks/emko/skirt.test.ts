@@ -1,127 +1,122 @@
 import { describe, expect, it } from 'vitest'
-import { draftEmkoSkirt, emkoSkirt, type EmkoSkirtOptions } from './skirt'
+import { draftEmkoSkirt, emkoSkirt } from './skirt'
 import { dist } from '../../draft/geom'
-import { SAMPLE_MEASUREMENTS, validateMeasurements } from '../../measurements'
+import { GOST_FIGURES, SAMPLE_MEASUREMENTS, typicalFigure, validateMeasurements } from '../../measurements'
 
-/**
- * Reference cases: the key segments of the drawing are compared with a hand
- * calculation by the textbook formulas (written out in the comments, cm).
- */
 const step = (r: ReturnType<typeof draftEmkoSkirt>, id: string) => {
   const s = r.steps.find((x) => x.id === id)
   if (!s) throw new Error(`no step ${id}`)
   return s.value
 }
 
-const cases: {
-  name: string
-  m: Parameters<typeof draftEmkoSkirt>[0]
-  o: EmkoSkirtOptions
-  hand: Record<string, number>
-}[] = [
-  {
-    // vflint.ru/node/68 worked example: Ст 37, Сб 50, Дтс 40,4 (ТБ = 0,5·Дтс = 20,2),
-    // Влт 103, Дсб 105,8, Дсп 103,9, Ди = Дтк = 57,6; Пт 1, Пб 2.
-    name: 'пример из учебного пособия 164-96-100',
-    m: { waist: 740, hips: 1000, waistToHips: 202, skirtLength: 576, waistToFloor: 1058, waistToFloorBack: 1030, waistToFloorFront: 1039 },
-    o: { waistEase: 10, hipEase: 20, backDartLength: 160, frontDartLength: 110, backCentreDrop: 0 },
-    hand: {
-      // ББ1 = 50 + 2 = 52; ББ2 = 26 − 1 = 25; ББ3 = 0,4·25 = 10; Б1Б4 = 0,4·27 = 10,8
-      ББ1: 520, ББ2: 250, ББ3: 100, Б1Б4: 108,
-      // ΣВ = 52 − (37 + 1) = 14; 0,35·14 = 4,9; 0,5·14 = 7; 0,15·14 = 2,1
-      ΣВ: 140, Вз: 49, Вб: 70, Вп: 21,
-      // Т2Т20 = 105,8 − 103 = 2,8; Т1Т10 = 103,9 − 103 = 0,9
-      Т2Т20: 28, Т1Т10: 9,
-    },
+/**
+ * The book's own example: ЕМКО СЭВ vol. 2, p. 107, size 164-96-104.
+ * Measurements from table 11 (ОСТ 17-326-81), cm: Т7 103,2, Т12 73,6, Т18 76,0,
+ * Т19 104,0, Т25 106,1, Т26 104,2, Т46 20,4. Ease Пб 2,15, Пт 1,34.
+ * The book's length is Т7 − Т9 + 0,75 + 0,6 = 59,15 at the back, so Ди at the
+ * side is 59,15 + 1,85 = 61,00.
+ */
+const book = {
+  m: {
+    waist: 760, hips: 1040, bustSpan: 204, skirtLength: 610,
+    waistToFloorBack: 1032, glutealFoldHeight: 736, waistToFloor: 1061, waistToFloorFront: 1042,
   },
-  {
-    // Типовая фигура около 164-88-96, прилегающий силуэт: Пт 0,5, Пб 1.
-    name: 'прилегающая, 164-88-94',
-    m: { waist: 680, hips: 940, waistToHips: 190, skirtLength: 600, waistToFloor: 1060, waistToFloorBack: 1045, waistToFloorFront: 1050 },
-    o: { waistEase: 5, hipEase: 10, backDartLength: 160, frontDartLength: 110, backCentreDrop: 0 },
-    hand: {
-      // ББ1 = 47 + 1 = 48; ББ2 = 24 − 1 = 23; ББ3 = 9,2; Б1Б4 = 0,4·25 = 10
-      ББ1: 480, ББ2: 230, ББ3: 92, Б1Б4: 100,
-      // ΣВ = 48 − (34 + 0,5) = 13,5; 4,725; 6,75; 2,025
-      ΣВ: 135, Вз: 47.25, Вб: 67.5, Вп: 20.25,
-      Т2Т20: 15, Т1Т10: 5,
-    },
-  },
-  {
-    // Полная фигура с выступающим животом, прямой силуэт: Пт 1,5, Пб 3.
-    name: 'полная, 170-108-116, выступающий живот',
-    m: { waist: 940, hips: 1160, waistToHips: 210, skirtLength: 700, waistToFloor: 1080, waistToFloorBack: 1060, waistToFloorFront: 1085 },
-    o: { waistEase: 15, hipEase: 30, backDartLength: 160, frontDartLength: 110, backCentreDrop: 10 },
-    hand: {
-      // ББ1 = 58 + 3 = 61; ББ2 = 30,5 − 1 = 29,5; ББ3 = 11,8; Б1Б4 = 0,4·31,5 = 12,6
-      ББ1: 610, ББ2: 295, ББ3: 118, Б1Б4: 126,
-      // ΣВ = 61 − (47 + 1,5) = 12,5; 4,375; 6,25; 1,875
-      ΣВ: 125, Вз: 43.75, Вб: 62.5, Вп: 18.75,
-      // Т2Т20 = 108 − 106 = 2; Т1Т10 = 108,5 − 106 = 2,5
-      Т2Т20: 20, Т1Т10: 25,
-    },
-  },
-]
+  o: { waistEase: 13.4, hipEase: 21.5, backCentreDrop: 0 },
+}
 
-describe('Прямая юбка ЕМКО СЭВ: сверка с ручным расчётом', () => {
-  for (const tc of cases) {
-    describe(tc.name, () => {
-      const r = draftEmkoSkirt(tc.m, tc.o)
+describe('Прямая юбка ЕМКО СЭВ: пример учебника, размер 164-96-104', () => {
+  const r = draftEmkoSkirt(book.m, book.o)
+  const p = r.points
 
-      it('совпадает с расчётом по формулам', () => {
-        for (const [id, value] of Object.entries(tc.hand)) expect(step(r, id), id).toBeCloseTo(value, 6)
-      })
+  it('формулы дают значения столбца «величина отрезка в чертеже» (±1 мм)', () => {
+    // Book column, cm → mm.
+    const table: Record<string, number> = {
+      '41–51': 202, '51–57': 542, '51–54': 271, '41–470': 393.5,
+      '41–42': 108.5, '42–521': 161.5, '47–46': 103, '46–561': 101, '41–91': 591.5,
+    }
+    for (const [id, value] of Object.entries(table)) expect(Math.abs(step(r, id) - value), id).toBeLessThanOrEqual(1)
+    // Raises: 94–441 − 41–91 = 61,00 − 59,15; 97–47 − 41–91 = 59,40 − 59,15.
+    expect(step(r, '94–441')).toBeCloseTo(18.5, 6)
+    expect(step(r, '97–47')).toBeCloseTo(2.5, 6)
+  })
 
-      it('чертёж построен по этим размерам', () => {
-        const p = r.points
-        const h = tc.hand
-        expect(p.hipCF!.x - p.hipCB!.x).toBeCloseTo(h.ББ1!, 6)
-        expect(p.hipSide!.x).toBeCloseTo(h.ББ2!, 6)
-        expect(p.hemCB!.y).toBeCloseTo(tc.m.skirtLength, 6)
-        expect(p.hipCB!.y).toBeCloseTo(tc.m.waistToHips, 6)
-        expect(p.dartBackCentre!.x).toBeCloseTo(h.ББ3!, 6)
-        expect(p.hipCF!.x - p.dartFrontCentre!.x).toBeCloseTo(h.Б1Б4!, 6)
-        expect(p.waistSideFront!.x - p.waistSideBack!.x).toBeCloseTo(h.Вб!, 6)
-        expect(p.dartBackRight!.x - p.dartBackLeft!.x).toBeGreaterThan(h.Вз! - 1)
-        expect(p.dartBackRight!.x - p.dartBackLeft!.x).toBeLessThan(h.Вз! + 1)
-        // Side waist raise and front raise over the back waist line.
-        expect(-p.waistSideBack!.y).toBeCloseTo(h.Т2Т20!, 6)
-        expect(-p.waistCF!.y).toBeCloseTo(h.Т1Т10!, 6)
-        expect(p.waistCB!.y).toBeCloseTo(tc.o.backCentreDrop, 6)
-      })
+  it('суммы вытачек считаются по формуле dт = |51–57| − |41–470|', () => {
+    // 541,5 − 393,4 = 148,1 мм. The book prints 14,40 cm here (its darts
+    // 3,75 / 2,45 / 1,00 are 0,26 / 0,17 / 0,07 of 14,40), which does not
+    // follow from its own 54,20 − 39,35; we keep the formula.
+    expect(step(r, 'dт')).toBeCloseTo(148.1, 6)
+    expect(step(r, '441–442')).toBeCloseTo(0.26 * 148.1, 6)
+    expect(step(r, '42–421')).toBeCloseTo(0.17 * 148.1, 6)
+    expect(step(r, '46–461')).toBeCloseTo(0.07 * 148.1, 6)
+    // The halves add up to the whole suppression: 2·(0,26 + 0,17 + 0,07) = 1.
+    expect(2 * (step(r, '441–442') + step(r, '42–421') + step(r, '46–461'))).toBeCloseTo(148.1, 6)
+  })
 
-      it('стороны вытачек уравнены, длина вытачки задана', () => {
-        const p = r.points
-        expect(dist(p.dartBackTip!, p.dartBackLeft!)).toBeCloseTo(dist(p.dartBackTip!, p.dartBackRight!), 6)
-        expect(dist(p.dartFrontTip!, p.dartFrontLeft!)).toBeCloseTo(dist(p.dartFrontTip!, p.dartFrontRight!), 6)
-        expect(dist(p.dartBackTip!, p.dartBackCentre!)).toBeGreaterThan(tc.o.backDartLength - 2)
-      })
+  it('чертёж построен по этим размерам (рис. 46)', () => {
+    expect(p.hipCB!.y).toBeCloseTo(step(r, '41–51'), 6)
+    expect(p.hipCF!.x).toBeCloseTo(541.5, 6)
+    expect(p.hipSide!.x).toBeCloseTo(270.75, 6)
+    expect(p.hemCB!.y).toBeCloseTo(591.5, 6)
+    expect(p.waistCB!.y).toBeCloseTo(0, 6)
+    expect(-p.waistSideTop!.y).toBeCloseTo(18.5, 6)
+    expect(-p.waistCF!.y).toBeCloseTo(2.5, 6)
+    // The waist stays level at the centres for a tenth of the waist.
+    expect(p.waistBackLead!).toMatchObject({ x: expect.closeTo(39.34, 6), y: expect.closeTo(0, 6) })
+    expect(p.waistCF!.x - p.waistFrontLead!.x).toBeCloseTo(39.34, 6)
+    expect(p.waistFrontLead!.y).toBeCloseTo(-2.5, 6)
+    // Side seam ends at 442 and 442', equally either side of 441.
+    expect(p.waistSideTop!.x - p.waistSideBack!.x).toBeCloseTo(0.26 * 148.1, 6)
+    expect(p.waistSideFront!.x - p.waistSideTop!.x).toBeCloseTo(0.26 * 148.1, 6)
+    // Dart tips on the dart axes at the given lengths.
+    expect(p.dartBackTip!.x).toBeCloseTo(108.3, 6)
+    expect(p.hipCF!.x - p.dartFrontTip!.x).toBeCloseTo(103, 6)
+  })
 
-      it('сшиваемые срезы совпадают', () => {
-        for (const ch of r.checks) expect(ch.ok, `${ch.title}: ${ch.a} / ${ch.b}`).toBe(true)
-      })
+  it('стороны вытачек уравнены, раствор как в таблице', () => {
+    expect(dist(p.dartBackTip!, p.dartBackLeft!)).toBeCloseTo(dist(p.dartBackTip!, p.dartBackRight!), 6)
+    expect(dist(p.dartFrontTip!, p.dartFrontLeft!)).toBeCloseTo(dist(p.dartFrontTip!, p.dartFrontRight!), 6)
+    expect(Math.abs(p.dartBackRight!.x - p.dartBackLeft!.x - 2 * 0.17 * 148.1)).toBeLessThan(1)
+    expect(Math.abs(p.dartFrontRight!.x - p.dartFrontLeft!.x - 2 * 0.07 * 148.1)).toBeLessThan(1)
+    expect(dist(p.dartBackTip!, p.dartBackLeft!)).toBeGreaterThan(161)
+  })
 
-      it('нет предупреждений для обычной фигуры', () => {
-        expect(r.warnings).toEqual([])
-      })
-    })
-  }
+  it('сшиваемые срезы совпадают, предупреждений нет', () => {
+    for (const ch of r.checks) expect(ch.ok, `${ch.title}: ${ch.a} / ${ch.b}`).toBe(true)
+    expect(r.warnings).toEqual([])
+  })
 
   it('даёт две детали: заднюю (крой 2) и переднюю со сгибом', () => {
-    const r = draftEmkoSkirt(cases[0]!.m, cases[0]!.o)
-    expect(r.pieces.map((p) => p.id)).toEqual(['emko-skirt-back', 'emko-skirt-front'])
-    expect(r.pieces[1]!.paths.some((p) => p.role === 'fold')).toBe(true)
+    expect(r.pieces.map((x) => x.id)).toEqual(['emko-skirt-back', 'emko-skirt-front'])
+    expect(r.pieces[1]!.paths.some((x) => x.role === 'fold')).toBe(true)
     for (const piece of r.pieces) expect(piece.paths[0]!.d).toMatch(/^M [-\d.,]+ .* Z$/)
+  })
+})
+
+describe('Прямая юбка ЕМКО СЭВ: другие фигуры', () => {
+  it('понижает талию посередине сзади, не трогая остальное', () => {
+    const r = draftEmkoSkirt(book.m, { ...book.o, backCentreDrop: 10 })
+    expect(r.points.waistCB!.y).toBeCloseTo(10, 6)
+    expect(r.points.waistBackLead!.y).toBeCloseTo(0, 6)
+    expect(r.checks.every((c) => c.ok)).toBe(true)
   })
 
   it('предупреждает о слишком широкой вытачке', () => {
-    const r = draftEmkoSkirt({ ...cases[0]!.m, waist: 600, hips: 1100 }, cases[0]!.o)
+    const r = draftEmkoSkirt({ ...book.m, waist: 600, hips: 1200 }, book.o)
     expect(r.warnings.join(' ')).toMatch(/Задняя вытачка/)
   })
 
   it('работает на типовой фигуре из мерок приложения', () => {
     expect(validateMeasurements(SAMPLE_MEASUREMENTS, { required: emkoSkirt.required, plausibility: false }).filter((i) => i.level === 'error')).toEqual([])
-    const r = emkoSkirt.draft(SAMPLE_MEASUREMENTS, emkoSkirt.defaults('semi'))
+    const r = emkoSkirt.draft(SAMPLE_MEASUREMENTS, emkoSkirt.defaults('straight'))
     expect(r.checks.every((c) => c.ok)).toBe(true)
+  })
+
+  it('строится на всех типовых фигурах ГОСТ 31396 без ошибок проверки', () => {
+    for (const f of GOST_FIGURES) {
+      for (const s of ['fitted', 'semi', 'straight'] as const) {
+        const r = emkoSkirt.draft(typicalFigure(f), emkoSkirt.defaults(s))
+        for (const ch of r.checks) expect(ch.ok, `${f.label} ${s}: ${ch.title} ${ch.a} / ${ch.b}`).toBe(true)
+      }
+    }
   })
 })

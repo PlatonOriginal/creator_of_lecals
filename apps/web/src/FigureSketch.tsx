@@ -67,6 +67,7 @@ const OVERLAYS: Record<MeasurementId, Overlay> = {
   waistToFloor: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, side(412)] },
   waistToFloorBack: { view: 'back', shapes: [{ girth: [100, WAIST_Y, 22] }, { line: [[100, WAIST_Y], [100, 412]], ends: true }] },
   waistToFloorFront: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, { line: [[100, WAIST_Y], [100, 412]], ends: true }] },
+  glutealFoldHeight: { view: 'back', shapes: [{ line: [[84, 252], [116, 252]] }, { line: [[100, 252], [100, 412]], ends: true }] },
   thigh: { view: 'front', shapes: [{ girth: [119, 250, 17] }] },
   knee: { view: 'front', shapes: [{ girth: [112.5, 322, 8.5] }] },
   calf: { view: 'front', shapes: [{ girth: [114, 350, 10] }] },
