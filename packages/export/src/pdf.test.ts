@@ -49,3 +49,13 @@ describe('base block to PDF', () => {
     expect(a0.pages).toBe(1)
   })
 })
+
+describe('bodice to PDF', () => {
+  it('prints the ЕМКО bodice with sleeve on one A0 sheet', async () => {
+    const { emkoBodice } = await import('@lecals/core')
+    const r = emkoBodice.draft(SAMPLE_MEASUREMENTS, emkoBodice.defaults('semi'))
+    expect(r.pieces).toHaveLength(3)
+    const a0 = await piecesToPdf(r.pieces, { fontBytes, paper: A0 })
+    expect(a0.pages).toBe(1)
+  })
+})

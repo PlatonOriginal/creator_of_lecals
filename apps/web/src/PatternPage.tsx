@@ -222,7 +222,7 @@ export function PatternPage({ figure, onChange }: { figure: Figure; onChange: (f
                     <tr key={s.id}>
                       <th>{s.id}</th>
                       <td>{s.formula}</td>
-                      <td>{formatCm(s.value)}</td>
+                      <td>{s.unit === '°' ? `${s.value.toFixed(1).replace('.', ',')}°` : formatCm(s.value)}</td>
                     </tr>
                   ))}
                 </tbody>
