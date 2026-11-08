@@ -64,6 +64,8 @@ const TYPICAL: Record<Exclude<MeasurementId, 'height' | 'bust' | 'hips'>, Regres
   waistToFloorBack: { base: 1028, perHeight: 0.6, spread: 35 },
   waistToFloorFront: { base: 1036, perHeight: 0.6, perHips: 0.05, spread: 35 },
   glutealFoldHeight: { base: 738, perHeight: 0.45, perHips: -0.03, spread: 25 },
+  inseam: { base: 769, perHeight: 0.5, perHips: -0.05, spread: 30 },
+  instep: { base: 314, perHeight: 0.03, perHips: 0.07, spread: 15 },
   thigh: { base: 560, perHips: 0.5, spread: 40 },
   knee: { base: 365, perBust: 0.05, perHips: 0.15, spread: 25 },
   calf: { base: 350, perHips: 0.2, spread: 30 },
