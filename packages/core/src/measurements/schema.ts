@@ -173,12 +173,16 @@ export const MEASUREMENT_LIST = [
     hint: 'Сбоку от линии талии до пола, без обуви.',
   }),
   spec({
-    id: 'waistToFloorBack', short: 'Влт', title: 'Высота линии талии сзади', group: 'legs', kind: 'length', min: 830, max: 1300,
+    id: 'waistToFloorBack', gost: '7', short: 'Влт', title: 'Высота линии талии сзади', group: 'legs', kind: 'length', min: 830, max: 1300,
     hint: 'Сзади по позвоночнику от линии талии (тесьмы) до пола, без обуви. Вместе с длиной сбоку и спереди показывает, насколько линия талии наклонена.',
   }),
   spec({
-    id: 'waistToFloorFront', short: 'Дсп', title: 'Длина от талии до пола спереди', group: 'legs', kind: 'length', min: 830, max: 1300,
+    id: 'waistToFloorFront', gost: '26', short: 'Дсп', title: 'Длина от талии до пола спереди', group: 'legs', kind: 'length', min: 830, max: 1300,
     hint: 'Спереди посередине от линии талии через выступ живота до пола, без обуви.',
+  }),
+  spec({
+    id: 'glutealFoldHeight', gost: '12', short: 'Впс', title: 'Высота подъягодичной складки', group: 'legs', kind: 'length', min: 550, max: 950,
+    hint: 'Сзади по вертикали от пола до середины складки под ягодицей, без обуви. По ней строят линию бёдер юбки и брюк.',
   }),
   spec({
     id: 'thigh', gost: '21', short: 'Обед', title: 'Обхват бедра', group: 'legs', kind: 'girth', min: 400, max: 900,

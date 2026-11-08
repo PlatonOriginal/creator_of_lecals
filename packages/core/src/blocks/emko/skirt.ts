@@ -1,49 +1,64 @@
-import { Line, along, atX, dist, sub, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, along, dist, toPiece, v, type Vec } from '../../draft/geom'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
  * Прямая юбка, ЕМКО СЭВ (основа, без припусков).
  *
- * Construction as taught after ЕМКО СЭВ (e.g. vflint.ru/node/68, which follows
- * the textbook with Дсб, Дсп and Влт for the waist slope):
+ * After «Единая методика конструирования одежды СЭВ», vol. 2 «Базовые
+ * конструкции женской одежды», 1988: skirt of straight silhouette, variant I,
+ * table on p. 107 and fig. 46. Point numbers are the book's. All values in mm;
+ * the book's constants in cm are ×10. T-codes are the size features of
+ * ОСТ 17-326-81 / ГОСТ 31396-2009:
  *
- *   ББ1 = Сб + Пб                    width of the half skirt
- *   ББ2 = 0,5·(Сб + Пб) − 1          back half, side line position
- *   ББ3 = 0,4·ББ2                    back dart axis
- *   Б1Б4 = 0,4·Б1Б2                  front dart axis
- *   ΣВ = (Сб + Пб) − (Ст + Пт)        all waist darts of the half skirt
- *   back 0,35·ΣВ, side 0,5·ΣВ, front 0,15·ΣВ
- *   Т2Т20 = Дсб − Влт                side waist raise
- *   Т1Т10 = Дсп − Влт                front waist raise
- *   back dart 15–17 cm, front 10–12 cm long
+ *   Т7  waist height (Влт)           Т12 gluteal fold height (Впс)
+ *   Т18 waist girth (От)             Т19 hip girth (Об)
+ *   Т25 waist to floor at the side   Т26 waist to floor in front
+ *   Т46 bust point span (Цг)
  *
- * One deviation: the hip line ТБ is taken from the measurement Дтб instead of
- * the textbook estimate 0,5·Дтс, because we have the real measurement.
+ *   41–51  = 0,65·(Т7 − Т12) + 0,75 + ПТ  hip line
+ *   51–57  = 0,5·Т19 + Пб                 half-skirt width at the hips
+ *   51–54  = 0,5·|51–57|                  side line (back and front equal)
+ *   94–441 − 41–91 = Т25 − Т7 − 1,05      side waist raise
+ *   97–47  − 41–91 = Т26 − Т7 − 0,75      front waist raise
+ *   41–470 = 0,5·Т18 + Пт                 waist with ease
+ *   dт     = |51–57| − |41–470|           all waist suppression of a half
+ *   41–420 = 47–460 = 0,1·|41–470|        where the waist curve leaves the centres
+ *   side:  441–442 = 441–442' = 0,26·dт, straight to 54
+ *   back dart:  41–42 = 0,4·|51–54|, length 0,8·|41–51|, 42–421 = 42–421' = 0,17·dт
+ *   front dart: 47–46 = 0,5·Т46 + ПТ, length 0,5·|41–51|, 46–461 = 46–461' = 0,07·dт
  *
- * Frame: x to the right from the centre back, y down from the back waist
- * line Т. The back half is on the left, the front half on the right, as on
- * the textbook drawing.
+ * Deviations from the book:
+ *  - the length is chosen by the user (Ди, at the side) instead of the
+ *    book's knee length Т7 − Т9 + 0,75;
+ *  - the book prints dт = 14,40 cm for its example, though its own formula
+ *    gives 54,20 − 39,35 = 14,85; we follow the formula;
+ *  - an optional drop of the waist at the centre back (0 in the book).
+ *
+ * Frame: x to the right from the centre back 41, y down from the back waist
+ * line. The back half is on the left, the front half on the right, as in fig. 46.
  */
 export interface EmkoSkirtOptions extends Record<string, number> {
-  /** Прибавка к полуобхвату талии Ст, mm. */
+  /** Прибавка к полуобхвату талии Пт, mm. */
   waistEase: number
-  /** Прибавка к полуобхвату бёдер Сб, mm. */
+  /** Прибавка к полуобхвату бёдер Пб, mm. */
   hipEase: number
-  /** Длина задней вытачки, mm. */
-  backDartLength: number
-  /** Длина передней вытачки, mm. */
-  frontDartLength: number
-  /** Понижение линии талии на середине спинки, mm (при выступающих ягодицах — 0, при плоских — до 15). */
+  /** Понижение линии талии на середине спинки, mm (при плоских ягодицах — до 15). */
   backCentreDrop: number
 }
 
+/**
+ * Ease to the half girths. The book gives only the straight silhouette for the
+ * skirt: hips 2,15 (ПС 1,00 + ПП 0,62 + ПТ 0,53), waist 1,34 (ПП 0,94 + ПТ 0,40).
+ */
 const EASE: Record<Silhouette, { waistEase: number; hipEase: number }> = {
   fitted: { waistEase: 5, hipEase: 10 },
-  semi: { waistEase: 10, hipEase: 20 },
-  straight: { waistEase: 15, hipEase: 30 },
+  semi: { waistEase: 10, hipEase: 15 },
+  straight: { waistEase: 13, hipEase: 22 },
 }
 
-export const EMKO_SKIRT_REQUIRED = ['waist', 'hips', 'waistToHips', 'skirtLength', 'waistToFloor', 'waistToFloorBack', 'waistToFloorFront'] as const
+export const EMKO_SKIRT_REQUIRED = [
+  'waist', 'hips', 'bustSpan', 'skirtLength', 'waistToFloorBack', 'glutealFoldHeight', 'waistToFloor', 'waistToFloorFront',
+] as const
 
 export const emkoSkirt: BlockDef<EmkoSkirtOptions> = {
   id: 'emko-skirt',
@@ -51,153 +66,163 @@ export const emkoSkirt: BlockDef<EmkoSkirtOptions> = {
   method: 'emko',
   required: EMKO_SKIRT_REQUIRED,
   options: [
-    { id: 'waistEase', short: 'Пт', title: 'Прибавка по талии (к полуобхвату)', min: 0, max: 30, step: 5 },
-    { id: 'hipEase', short: 'Пб', title: 'Прибавка по бёдрам (к полуобхвату)', min: 0, max: 60, step: 5 },
-    { id: 'backDartLength', title: 'Длина задней вытачки', min: 100, max: 200, step: 5 },
-    { id: 'frontDartLength', title: 'Длина передней вытачки', min: 60, max: 140, step: 5 },
+    { id: 'waistEase', short: 'Пт', title: 'Прибавка по талии (к полуобхвату)', min: 0, max: 30, step: 1 },
+    { id: 'hipEase', short: 'Пб', title: 'Прибавка по бёдрам (к полуобхвату)', min: 0, max: 60, step: 1 },
     {
       id: 'backCentreDrop', title: 'Понижение талии посередине сзади', min: 0, max: 20, step: 5,
-      hint: 'При плоских ягодицах и сутулой осанке талию сзади опускают на 0,5–1,5 см, иначе под поясом лягут складки.',
+      hint: 'При плоских ягодицах и сутулой осанке талию сзади опускают на 0,5–1,5 см, иначе под поясом лягут складки. В учебнике — 0.',
     },
   ],
-  defaults: (s) => ({ ...EASE[s], backDartLength: 160, frontDartLength: 110, backCentreDrop: 0 }),
+  defaults: (s) => ({ ...EASE[s], backCentreDrop: 0 }),
   draft: draftEmkoSkirt,
 }
 
 type M = Record<(typeof EMKO_SKIRT_REQUIRED)[number], number>
 
-/** Dart with legs equalised to the longer one, as the textbook asks. */
+/** Dart with legs equalised to the longer one. */
 function dart(left: Vec, right: Vec, tip: Vec) {
   const l = Math.max(dist(tip, left), dist(tip, right))
   return { left: along(tip, left, l), right: along(tip, right, l), tip }
 }
+
+/** Smooth step from 0 to 1 with level ends. */
+const ease = (t: number) => (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, t)))) / 2
 
 export function draftEmkoSkirt(m: M, o: EmkoSkirtOptions): BlockResult {
   const steps: CalcStep[] = []
   const c = calc(steps)
   const warnings: string[] = []
 
-  const St = m.waist / 2
-  const Sb = m.hips / 2
-  const TB = c('ТБ', 'Линия бёдер от талии', 'Дтб', m.waistToHips)
-  const TN = c('ТН', 'Длина юбки', 'Ди', m.skirtLength)
-  const W = c('ББ1', 'Ширина юбки по бёдрам', 'Сб + Пб', Sb + o.hipEase)
-  const Wb = c('ББ2', 'Ширина задней половины', '0,5·(Сб + Пб) − 1', 0.5 * W - 10)
-  const Wf = W - Wb
-  const xb = c('ББ3', 'Ось задней вытачки от середины', '0,4·ББ2', 0.4 * Wb)
-  const ff = c('Б1Б4', 'Ось передней вытачки от середины', '0,4·Б1Б2', 0.4 * Wf)
+  const hip = c('41–51', 'Линия бёдер от талии', '0,65·(Т7 − Т12) + 0,75 + 0,2', 0.65 * (m.waistToFloorBack - m.glutealFoldHeight) + 7.5 + 2)
+  const W = c('51–57', 'Ширина юбки по бёдрам', '0,5·Т19 + Пб', 0.5 * m.hips + o.hipEase)
+  const half = c('51–54', 'Положение бокового шва', '0,5·|51–57|', 0.5 * W)
+  const rs = c('94–441', 'Подъём талии у бока', 'Т25 − Т7 − 1,05', m.waistToFloor - m.waistToFloorBack - 10.5)
+  const rf = c('97–47', 'Подъём талии спереди', 'Т26 − Т7 − 0,75', m.waistToFloorFront - m.waistToFloorBack - 7.5)
+  const len = c('41–91', 'Длина по середине сзади', 'Ди − подъём у бока', m.skirtLength - rs)
+  const wl = c('41–470', 'Талия с прибавкой', '0,5·Т18 + Пт', 0.5 * m.waist + o.waistEase)
+  const dt = c('dт', 'Сумма вытачек', '|51–57| − |41–470|', W - wl)
+  const lead = c('41–420', 'Горизонтальный участок талии у середины', '0,1·|41–470|', 0.1 * wl)
+  const dS = c('441–442', 'Боковая вытачка (половина)', '0,26·dт', 0.26 * Math.max(0, dt))
+  const xb = c('41–42', 'Ось задней вытачки', '0,4·|51–54|', 0.4 * half)
+  const lb = c('42–521', 'Длина задней вытачки', '0,8·|41–51|', 0.8 * hip)
+  const dB = c('42–421', 'Задняя вытачка (половина)', '0,17·dт', 0.17 * Math.max(0, dt))
+  const ff = c('47–46', 'Ось передней вытачки от середины', '0,5·Т46 + 0,1', 0.5 * m.bustSpan + 1)
+  const lf = c('46–561', 'Длина передней вытачки', '0,5·|41–51|', 0.5 * hip)
+  const dF = c('46–461', 'Передняя вытачка (половина)', '0,07·dт', 0.07 * Math.max(0, dt))
+
+  if (dt <= 0) warnings.push('Талия с прибавкой не меньше бёдер: вытачки не нужны, юбка будет прямой без вытачек.')
+  if (2 * dB > 60) warnings.push(`Задняя вытачка ${fmt(2 * dB)} шире 6 см: лучше разложить её на две.`)
+  if (2 * dS > 90) warnings.push(`Боковой срез забирает ${fmt(2 * dS)} на талии: бок получится очень крутым, проверьте мерки.`)
+  if (rs < 0) warnings.push('По меркам талия сбоку ниже, чем сзади: проверьте Дсб (Т25) и высоту талии (Т7).')
+  if (ff + dF > half - dS - 20) warnings.push('Передняя вытачка заходит на бок: проверьте расстояние между центрами груди.')
+
+  // Waist guide: level at the centres, rising smoothly to the side top 441.
+  const xFrontLead = W - lead
+  const waistY = (x: number) => {
+    const back = -rs * ease((x - lead) / (half - lead))
+    const front = -rs + (rs - rf) * ease((x - half) / (xFrontLead - half))
+    const y = x <= half ? back : front
+    // The centre-back drop fades out over the first tenth of the waist.
+    return y + o.backCentreDrop * (1 - ease(x / lead))
+  }
+  const slope = (x: number) => (waistY(x + 0.5) - waistY(x - 0.5))
+  const onWaist = (x: number) => v(x, waistY(x))
+  const dir = (x: number) => v(1, slope(x))
+
+  // Grid (fig. 46)
+  const P41 = onWaist(0)
+  const P420 = onWaist(lead)
+  const P51 = v(0, hip)
+  const P54 = v(half, hip)
+  const P57 = v(W, hip)
+  const P91 = v(0, len)
+  const P94 = v(half, len)
+  const P97 = v(W, len)
+  const P47 = v(W, -rf)
+  const P460 = onWaist(xFrontLead)
+  const P441 = onWaist(half)
+  const P442 = onWaist(half - dS)
+  const P442f = onWaist(half + dS)
+
   const xf = W - ff
-  const sum = c('ΣВ', 'Сумма вытачек', '(Сб + Пб) − (Ст + Пт)', W - (St + o.waistEase))
-  const dB = c('Вз', 'Задняя вытачка', '0,35·ΣВ', 0.35 * Math.max(0, sum))
-  const dS = c('Вб', 'Боковая вытачка', '0,5·ΣВ', 0.5 * Math.max(0, sum))
-  const dF = c('Вп', 'Передняя вытачка', '0,15·ΣВ', 0.15 * Math.max(0, sum))
-  const rs = c('Т2Т20', 'Подъём талии сбоку', 'Дсб − Влт', m.waistToFloor - m.waistToFloorBack)
-  const rf = c('Т1Т10', 'Подъём талии спереди', 'Дсп − Влт', m.waistToFloorFront - m.waistToFloorBack)
+  const back = dart(onWaist(xb - dB), onWaist(xb + dB), v(xb, waistY(xb) + lb))
+  const front = dart(onWaist(xf - dF), onWaist(xf + dF), v(xf, waistY(xf) + lf))
 
-  if (sum <= 0) warnings.push('Талия с прибавкой не меньше бёдер: вытачки не нужны, юбка будет прямой без вытачек.')
-  if (dB > 50) warnings.push(`Задняя вытачка ${fmt(dB)} шире 5 см: лучше разложить её на две.`)
-  if (dF > 30) warnings.push(`Передняя вытачка ${fmt(dF)} шире 3 см: лучше разложить её на две.`)
-  if (dS > 80) warnings.push(`Боковой срез забирает ${fmt(dS)} на талии: бок получится очень крутым, проверьте мерки.`)
-  if (rs < 0) warnings.push('По меркам талия сбоку ниже, чем сзади: проверьте Дсб и Влт.')
+  const seg = (a: Vec, b: Vec) => new Line(a).smooth(dir(a.x), dir(b.x), b)
+  const waistBack1 = new Line(P41).append(seg(P41, P420)).append(seg(P420, back.left))
+  const waistBack2 = seg(back.right, P442)
+  const waistFront1 = seg(P442f, front.left)
+  const waistFront2 = new Line(front.right).append(seg(front.right, P460)).append(seg(P460, P47))
 
-  // Grid
-  const T = v(0, o.backCentreDrop)
-  const B = v(0, TB)
-  const N = v(0, TN)
-  const T1 = v(W, -rf)
-  const B1 = v(W, TB)
-  const N1 = v(W, TN)
-  const B2 = v(Wb, TB)
-  const N2 = v(Wb, TN)
-  // Side waist points: the side "dart" is split equally either side of the side line,
-  // both points at the raised level Т20.
-  const sideBack = v(Wb - dS / 2, -rs)
-  const sideFront = v(Wb + dS / 2, -rs)
-
-  // Back dart on the back waist line Т–side
-  const bc = atX(T, sideBack, xb)
-  const bTip = v(xb, bc.y + o.backDartLength)
-  const back = dart(atX(T, sideBack, xb - dB / 2), atX(T, sideBack, xb + dB / 2), bTip)
-  // Front dart on the front waist line side–Т1
-  const fc = atX(sideFront, T1, xf)
-  const fTip = v(xf, fc.y + o.frontDartLength)
-  const front = dart(atX(sideFront, T1, xf - dF / 2), atX(sideFront, T1, xf + dF / 2), fTip)
-
-  // Side seams: convex curve from the waist point, arriving vertical at the hip line.
-  const sideCurveBack = new Line(sideBack).smooth(sub(B2, sideBack), v(0, 1), B2, 0.45)
-  const sideCurveFront = new Line(sideFront).smooth(sub(B2, sideFront), v(0, 1), B2, 0.45)
-
-  // Waist: square to the centre back / front, straight between darts.
-  const backWaistA = new Line(T).smooth(v(1, 0), sub(back.left, T), back.left)
-  const frontWaistB = new Line(front.right).smooth(sub(T1, front.right), v(1, 0), T1)
-
-  const backOutline = new Line(N)
-    .to(T)
-    .append(backWaistA)
+  const backOutline = new Line(P91)
+    .to(P51)
+    .to(P41)
+    .append(waistBack1)
     .to(back.tip)
     .to(back.right)
-    .to(sideBack)
-    .append(sideCurveBack)
-    .to(N2)
-  const frontOutline = new Line(N2)
-    .to(B2)
-    .append(sideCurveFront.reversed())
-    .to(front.left)
+    .append(waistBack2)
+    .to(P54)
+    .to(P94)
+  const frontOutline = new Line(P94)
+    .to(P54)
+    .to(P442f)
+    .append(waistFront1)
     .to(front.tip)
-    .append(frontWaistB)
-    .to(N1)
+    .to(front.right)
+    .append(waistFront2)
+    .to(P97)
 
-  const sideBackLen = sideCurveBack.length() + (TN - TB)
-  const sideFrontLen = sideCurveFront.length() + (TN - TB)
-  const waistBack = backWaistA.length() + dist(back.right, sideBack)
-  const waistFront = dist(sideFront, front.left) + frontWaistB.length()
+  const sideBackLen = dist(P442, P54) + (len - hip)
+  const sideFrontLen = dist(P442f, P54) + (len - hip)
+  const waistBack = waistBack1.length() + waistBack2.length()
+  const waistFront = waistFront1.length() + waistFront2.length()
 
   const backPiece = toPiece({
     id: 'emko-skirt-back',
     title: 'Задняя половина юбки',
     outline: backOutline,
-    extra: [{ role: 'mark', line: new Line(B).to(B2) }],
-    grain: [v(Wb * 0.55, TB + 40), v(Wb * 0.55, TN - 60)],
+    extra: [{ role: 'mark', line: new Line(P51).to(P54) }],
+    grain: [v(half * 0.55, hip + 40), v(half * 0.55, len - 60)],
     labels: [
-      { at: v(12, TB + 70), text: 'Задняя половина юбки', size: 7 },
-      { at: v(12, TB + 82), text: 'Крой 2 (шов посередине)' },
-      { at: v(12, TB + 92), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(12, TB - 6), text: 'линия бёдер', size: 4 },
+      { at: v(12, hip + 70), text: 'Задняя половина юбки', size: 7 },
+      { at: v(12, hip + 82), text: 'Крой 2 (шов посередине)' },
+      { at: v(12, hip + 92), text: 'ЕМКО СЭВ · без припусков' },
+      { at: v(12, hip - 6), text: 'линия бёдер', size: 4 },
     ],
-    seams: { side: sideBackLen, waist: waistBack, hem: Wb, dart: dB },
+    seams: { side: sideBackLen, waist: waistBack, hem: half, dart: 2 * dB },
   })
   const frontPiece = toPiece({
     id: 'emko-skirt-front',
     title: 'Переднее полотнище юбки',
     outline: frontOutline,
-    extra: [{ role: 'mark', line: new Line(B2).to(B1) }],
-    fold: [T1, N1],
-    grain: [v(Wb + Wf * 0.45, TB + 40), v(Wb + Wf * 0.45, TN - 60)],
+    extra: [{ role: 'mark', line: new Line(P54).to(P57) }],
+    fold: [P47, P97],
+    grain: [v(half + half * 0.45, hip + 40), v(half + half * 0.45, len - 60)],
     labels: [
-      { at: v(Wb + 12, TB + 70), text: 'Переднее полотнище', size: 7 },
-      { at: v(Wb + 12, TB + 82), text: 'Крой 1 со сгибом' },
-      { at: v(Wb + 12, TB + 92), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(Wb + 12, TB - 6), text: 'линия бёдер', size: 4 },
+      { at: v(half + 12, hip + 70), text: 'Переднее полотнище', size: 7 },
+      { at: v(half + 12, hip + 82), text: 'Крой 1 со сгибом' },
+      { at: v(half + 12, hip + 92), text: 'ЕМКО СЭВ · без припусков' },
+      { at: v(half + 12, hip - 6), text: 'линия бёдер', size: 4 },
     ],
-    seams: { side: sideFrontLen, waist: waistFront, hem: Wf, dart: dF },
+    seams: { side: sideFrontLen, waist: waistFront, hem: W - half, dart: 2 * dF },
   })
 
   const waistTotal = 2 * (waistBack + waistFront)
   return {
     pieces: [backPiece, frontPiece],
     points: {
-      waistCB: T, hipCB: B, hemCB: N,
-      waistCF: T1, hipCF: B1, hemCF: N1,
-      hipSide: B2, hemSide: N2,
-      waistSideBack: sideBack, waistSideFront: sideFront,
+      waistCB: P41, hipCB: P51, hemCB: P91,
+      waistCF: P47, hipCF: P57, hemCF: P97,
+      hipSide: P54, hemSide: P94, waistSideTop: P441,
+      waistSideBack: P442, waistSideFront: P442f,
+      waistBackLead: P420, waistFrontLead: P460,
       dartBackLeft: back.left, dartBackRight: back.right, dartBackTip: back.tip,
       dartFrontLeft: front.left, dartFrontRight: front.right, dartFrontTip: front.tip,
-      dartBackCentre: bc, dartFrontCentre: fc,
     },
     steps,
     checks: [
       check('side', 'Боковые срезы: задний и передний', sideBackLen, sideFrontLen, 0, 2),
-      check('waist', 'Талия юбки и обхват талии с прибавкой (От + 2·Пт)', waistTotal, m.waist + 2 * o.waistEase, 0, 10),
+      check('waist', 'Талия юбки и обхват талии с прибавкой (От + 2·Пт)', waistTotal, m.waist + 2 * o.waistEase, 0, 15),
     ],
     warnings,
   }
