@@ -236,3 +236,12 @@ button {
   .page.measure .panel { width: 560px; }
   .page.measure .progress { display: none; }
 }
+
+/* Mannequin fitted to measurements */
+.fit { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.fit th { text-align: right; color: var(--muted); font-weight: normal; font-size: 12px; padding: 2px 0; }
+.fit td { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.fit td + td { text-align: right; }
+.fit td.off { color: #8a5a00; }
+.manual summary { cursor: pointer; margin: 14px 0 4px; font-size: 14px; }
+.panel .hint button.link { padding: 0; font-size: inherit; }

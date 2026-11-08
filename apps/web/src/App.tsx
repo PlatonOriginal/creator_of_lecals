@@ -36,7 +36,7 @@ export function App() {
         <Suspense fallback={<p className="hint">Загрузка…</p>}>
           {tab === 'measure' && <MeasurePage figure={figure} onChange={setFigure} />}
           {tab === 'pattern' && <PatternPage figure={figure} onChange={setFigure} />}
-          {tab === 'body' && <BodyPage />}
+          {tab === 'body' && <BodyPage figure={figure} onOpenMeasurements={() => setTab('measure')} />}
         </Suspense>
       </main>
     </div>
