@@ -37,3 +37,15 @@ describe('pieceToSvg', () => {
     expect(svg).toContain('data-role="cut"')
   })
 })
+
+describe('base block to PDF', () => {
+  it('prints the ЕМКО skirt (two pieces) on A4 tiles and on one A0 sheet', async () => {
+    const { emkoSkirt } = await import('@lecals/core')
+    const r = emkoSkirt.draft(SAMPLE_MEASUREMENTS, emkoSkirt.defaults('semi'))
+    const a4 = await piecesToPdf(r.pieces, { fontBytes, paper: A4 })
+    expect(a4.pages).toBeGreaterThan(4)
+    expect((await PDFDocument.load(a4.bytes)).getPageCount()).toBe(a4.pages)
+    const a0 = await piecesToPdf(r.pieces, { fontBytes, paper: A0 })
+    expect(a0.pages).toBe(1)
+  })
+})

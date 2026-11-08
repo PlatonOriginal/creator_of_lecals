@@ -40,6 +40,8 @@ const RELATIONS: Relation[] = [
   { a: 'waistToHips', b: 'crotchDepth', level: 'error', message: 'Линия бёдер не может быть ниже сиденья: высота бёдер должна быть меньше высоты сидения' },
   { a: 'crotchDepth', b: 'waistToKnee', margin: 100, level: 'error', message: 'Высота сидения должна быть заметно меньше длины до колена' },
   { a: 'waistToKnee', b: 'waistToFloor', margin: 200, level: 'error', message: 'Длина до колена должна быть заметно меньше длины до пола' },
+  { a: 'waistToFloorBack', b: 'waistToFloor', margin: -10, level: 'warning', message: 'Сзади линия талии обычно не выше, чем сбоку: проверьте длину до пола сзади и сбоку' },
+  { a: 'waistToFloor', b: 'waistToFloorBack', margin: -60, level: 'warning', message: 'Сбоку линия талии выше, чем сзади, больше чем на 6 см: проверьте обе мерки' },
   { a: 'waistToFloor', b: 'height', margin: 500, level: 'error', message: 'Длина от талии до пола не может быть так близка к росту' },
   { a: 'thigh', b: 'hips', margin: 100, level: 'error', message: 'Обхват бедра (одной ноги) должен быть заметно меньше обхвата бёдер' },
   { a: 'knee', b: 'thigh', level: 'error', message: 'Обхват колена должен быть меньше обхвата бедра' },

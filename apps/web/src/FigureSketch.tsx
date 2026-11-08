@@ -61,6 +61,8 @@ const OVERLAYS: Record<MeasurementId, Overlay> = {
   crotchDepth: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, side(256)] },
   waistToKnee: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, side(322)] },
   waistToFloor: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, side(412)] },
+  waistToFloorBack: { view: 'back', shapes: [{ girth: [100, WAIST_Y, 22] }, { line: [[100, WAIST_Y], [100, 412]], ends: true }] },
+  waistToFloorFront: { view: 'front', shapes: [{ girth: [100, WAIST_Y, 22] }, { line: [[100, WAIST_Y], [100, 412]], ends: true }] },
   thigh: { view: 'front', shapes: [{ girth: [119, 250, 17] }] },
   knee: { view: 'front', shapes: [{ girth: [112.5, 322, 8.5] }] },
   calf: { view: 'front', shapes: [{ girth: [114, 350, 10] }] },
