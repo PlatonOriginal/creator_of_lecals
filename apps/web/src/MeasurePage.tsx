@@ -93,6 +93,7 @@ export function MeasurePage({ figure, onChange }: { figure: Figure; onChange: (f
       <div className="panel step">
         <p className="step-meta">
           {groupTitle} · {mode.index + 1} из {STEP_IDS.length}
+          {'gost' in spec && spec.gost && <> · признак {spec.gost} по ГОСТ 31396-2009</>}
         </p>
         <h2>
           {spec.title} <span className="short">{spec.short}</span>
@@ -173,7 +174,9 @@ function StartScreen({
         <Issues issues={leadIssues} />
         {typ && ready && (
           <p className="typical">
-            Ближайшая типовая фигура: <b>{typ.label}</b>, {GROUP_NAMES[typ.group]} полнотная группа
+            {typ.matches ? 'Ваша типовая фигура' : 'Ближайшая типовая фигура'}: <b>{typ.label}</b>,{' '}
+            {GROUP_NAMES[typ.group]} полнотная группа по ГОСТ 31396-2009
+            {!typ.matches && '. Ваши мерки между типовыми фигурами, это нормально: выкройка строится по вашим меркам.'}
           </p>
         )}
         <div className="buttons">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  GOST_FIGURES,
   LEADING_IDS,
   MEASUREMENTS,
   MEASUREMENT_IDS,
@@ -32,14 +33,12 @@ describe('schema', () => {
 })
 
 describe('typical figure', () => {
-  it('is valid for the whole grid of the standard, without warnings', () => {
-    for (let height = 1460; height <= 1820; height += 60)
-      for (let bust = 800; bust <= 1200; bust += 40)
-        for (const diff of [-20, 20, 60, 100, 140, 180]) {
-          const fig = typicalFigure({ height, bust, hips: bust + diff })
-          const issues = validateMeasurements(fig, { required: MEASUREMENT_IDS })
-          expect(issues.map((i) => i.message), `${height}-${bust}-${bust + diff}`).toEqual([])
-        }
+  it('is valid for every typical figure of the standard, without warnings', () => {
+    for (const f of GOST_FIGURES) {
+      const fig = typicalFigure(f)
+      const issues = validateMeasurements(fig, { required: MEASUREMENT_IDS })
+      expect(issues.map((i) => i.message), f.label).toEqual([])
+    }
   })
 
   it('grows with height and size', () => {
@@ -61,10 +60,18 @@ describe('typical figure', () => {
     expect(prefill({ height: 1700 })).toEqual({ height: 1700 })
   })
 
+  it('lists the 356 typical figures of table 3', () => {
+    expect(GOST_FIGURES).toHaveLength(356)
+    expect(new Set(GOST_FIGURES.map((f) => f.label)).size).toBe(356)
+  })
+
   it('snaps to the nearest typical figure and fullness group', () => {
-    expect(nearestTypicalFigure({ height: 1660, bust: 890, hips: 950 })).toMatchObject({ label: '164-88-94', group: 2 })
+    expect(nearestTypicalFigure({ height: 1660, bust: 890, hips: 950 })).toMatchObject({ label: '164-88-94', group: 2, matches: true })
     expect(nearestTypicalFigure({ height: 1700, bust: 1000, hips: 1110 })).toMatchObject({ label: '170-100-110', group: 3 })
-    expect(nearestTypicalFigure({ height: 1500, bust: 780, hips: 760 })).toMatchObject({ label: '152-80-78', group: 0 })
+    // 182 cm exists only from Ог3 96 in the first group.
+    expect(nearestTypicalFigure({ height: 1820, bust: 840, hips: 860 })).toMatchObject({ label: '176-84-86', matches: false })
+    // No group 0 at Ог3 80: the nearest is 158-80-82 (first group).
+    expect(nearestTypicalFigure({ height: 1580, bust: 800, hips: 780 })).toMatchObject({ label: '158-80-82', group: 1 })
   })
 })
 
