@@ -3,6 +3,7 @@
 
 - [План прототипа](docs/prototype-plan.md)
 - [Итоги M0: проверка технологий](docs/m0-results.md)
+- Прототип: https://platonoriginal.github.io/creator_of_lecals/ (обновляется после каждого мержа в main)
 
 ## Запуск
 
