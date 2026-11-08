@@ -37,8 +37,9 @@ export interface CalcStep {
   title: string
   /** The formula as printed in the textbook, e.g. «Сб + Пб». */
   formula: string
-  /** Result, mm. */
+  /** Result, mm (or degrees when unit is '°'). */
   value: number
+  unit?: '°'
 }
 
 /** Two seam lengths that must match (or differ by a planned ease). */
@@ -82,8 +83,8 @@ export function check(id: string, title: string, a: number, b: number, expected 
 
 /** Calculation table helper: records the step and returns its value. */
 export function calc(steps: CalcStep[]) {
-  return (id: string, title: string, formula: string, value: number): number => {
-    steps.push({ id, title, formula, value })
+  return (id: string, title: string, formula: string, value: number, unit?: '°'): number => {
+    steps.push(unit ? { id, title, formula, value, unit } : { id, title, formula, value })
     return value
   }
 }
