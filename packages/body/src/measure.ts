@@ -136,6 +136,18 @@ export function torsoGirth(mesh: MeshLike, y: number): number {
   return hullPerimeter(centralPiece(slicePieces(mesh, y)))
 }
 
+/** Torso girth and width across (x) at height y, metres. */
+export function torsoSlice(mesh: MeshLike, y: number): { g: number; w: number } {
+  const piece = centralPiece(slicePieces(mesh, y))
+  let lo = 0
+  let hi = 0
+  for (let k = 0; k < piece.length; k += 2) {
+    lo = Math.min(lo, piece[k]!)
+    hi = Math.max(hi, piece[k]!)
+  }
+  return { g: hullPerimeter(piece), w: hi - lo }
+}
+
 export interface BodyLevels {
   /** Heights of the girth lines, metres in mesh coordinates. */
   bust: number
@@ -162,14 +174,15 @@ export interface BodyMeasures {
 export function findLevels(mesh: MeshLike): BodyLevels {
   const { minY, maxY } = verticalExtent(mesh.vertices)
   const H = maxY - minY
-  const profile: { y: number; g: number }[] = []
-  for (let y = minY + 0.4 * H; y <= minY + 0.82 * H; y += 0.01 * H) profile.push({ y, g: torsoGirth(mesh, y) })
+  const profile: { y: number; g: number; w: number }[] = []
+  for (let y = minY + 0.4 * H; y <= minY + 0.82 * H; y += 0.01 * H) profile.push({ y, ...torsoSlice(mesh, y) })
 
   const crotch = profile.findIndex((p) => p.g > 0)
   if (crotch < 0) throw new Error('Не найдено туловище на сетке')
   let armpit = profile.length
   for (let i = crotch + 1; i < profile.length; i++)
-    if (profile[i]!.g > profile[i - 1]!.g * 1.06 && profile[i]!.y > minY + 0.65 * H) {
+    // The arms join the cut: it suddenly gets much wider (a fuller bust makes it deeper, not wider).
+    if (profile[i]!.w > profile[i - 1]!.w * 1.25 && profile[i]!.y > minY + 0.6 * H) {
       armpit = i
       break
     }
@@ -191,7 +204,9 @@ export function findLevels(mesh: MeshLike): BodyLevels {
     let bestG = profile[i]!.g
     for (let y = bestY - 0.01 * H; y <= bestY + 0.01 * H; y += 0.002 * H) {
       if (y >= top - 0.002 * H) break
-      const g = torsoGirth(mesh, y)
+      const { g, w } = torsoSlice(mesh, y)
+      // A jump in width means the cut has reached the armpits and caught the arms.
+      if (w > profile[i]!.w * 1.2) break
       if (g > 0 && better(g, bestG)) {
         bestG = g
         bestY = y
@@ -199,9 +214,10 @@ export function findLevels(mesh: MeshLike): BodyLevels {
     }
     return bestY
   }
+  const waistY = refine(waist, (a, b) => a < b)
   return {
     hips: refine(hips, (a, b) => a > b),
-    waist: refine(waist, (a, b) => a < b),
+    waist: waistY,
     bust: refine(bust, (a, b) => a > b),
   }
 }
