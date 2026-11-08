@@ -109,10 +109,10 @@ describe('validateMeasurements', () => {
   })
 
   it('warns when a value is far from the typical figure', () => {
-    const issues = validateMeasurements({ ...SAMPLE_MEASUREMENTS, backLength: 340 })
+    const issues = validateMeasurements({ ...SAMPLE_MEASUREMENTS, backLength: 335 })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({ level: 'warning', ids: ['backLength'] })
-    expect(validateMeasurements({ ...SAMPLE_MEASUREMENTS, backLength: 340 }, { plausibility: false })).toEqual([])
+    expect(validateMeasurements({ ...SAMPLE_MEASUREMENTS, backLength: 335 }, { plausibility: false })).toEqual([])
   })
 
   it('lists errors before warnings', () => {
