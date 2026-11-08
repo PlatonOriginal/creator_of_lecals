@@ -25,6 +25,8 @@ export interface MeasurementSpec {
   max: number
   /** How to take the measurement, shown in the wizard. */
   hint: string
+  /** Number of the size feature in ГОСТ 31396-2009 table 2, if it matches one exactly. */
+  gost?: string
   /** Leading measurements of ГОСТ 31396-2009: entered first, drive the prefill. */
   leading?: boolean
 }
@@ -49,65 +51,65 @@ function spec<const Id extends string>(s: MeasurementSpec & { id: Id }) {
 export const MEASUREMENT_LIST = [
   // Основные (ведущие по ГОСТ 31396-2009)
   spec({
-    id: 'height', short: 'Р', title: 'Рост', group: 'main', kind: 'height', min: 1400, max: 2000, leading: true,
+    id: 'height', gost: '1', short: 'Р', title: 'Рост', group: 'main', kind: 'height', min: 1400, max: 2000, leading: true,
     hint: 'Без обуви, пятки вместе, спина у стены. Отметьте на стене верх головы угольником или книгой и измерьте до пола.',
   }),
   spec({
-    id: 'bust', short: 'Ог3', title: 'Обхват груди третий', group: 'main', kind: 'girth', min: 700, max: 1500, leading: true,
+    id: 'bust', gost: '16', short: 'Ог3', title: 'Обхват груди третий', group: 'main', kind: 'girth', min: 700, max: 1500, leading: true,
     hint: `Горизонтально через выступающие точки груди, сзади через лопатки. Мерку снимают в белье, в котором будут носить изделие. ${TAPE}`,
   }),
   spec({
-    id: 'hips', short: 'Об', title: 'Обхват бёдер', group: 'main', kind: 'girth', min: 750, max: 1700, leading: true,
+    id: 'hips', gost: '19', short: 'Об', title: 'Обхват бёдер', group: 'main', kind: 'girth', min: 750, max: 1700, leading: true,
     hint: `Горизонтально через самые выступающие точки ягодиц, спереди с учётом выступа живота. ${TAPE}`,
   }),
   spec({
-    id: 'waist', short: 'От', title: 'Обхват талии', group: 'main', kind: 'girth', min: 500, max: 1500, leading: true,
+    id: 'waist', gost: '18', short: 'От', title: 'Обхват талии', group: 'main', kind: 'girth', min: 500, max: 1500, leading: true,
     hint: `По самому узкому месту туловища. Удобно сначала завязать на талии тесьму: она сама ляжет на линию талии и пригодится для других мерок. ${TAPE}`,
   }),
 
   // Корпус
   spec({
-    id: 'bustUpper', short: 'Ог1', title: 'Обхват груди первый', group: 'torso', kind: 'girth', min: 650, max: 1400,
+    id: 'bustUpper', gost: '14', short: 'Ог1', title: 'Обхват груди первый', group: 'torso', kind: 'girth', min: 650, max: 1400,
     hint: 'Над грудью, сзади через лопатки, спереди над основанием грудных желёз, под мышками. Сзади сантиметр чуть выше, чем спереди.',
   }),
   spec({
-    id: 'bustFull', short: 'Ог2', title: 'Обхват груди второй', group: 'torso', kind: 'girth', min: 700, max: 1550,
+    id: 'bustFull', gost: '15', short: 'Ог2', title: 'Обхват груди второй', group: 'torso', kind: 'girth', min: 700, max: 1550,
     hint: 'Сзади через лопатки, как Ог1, спереди через выступающие точки груди. Обычно на 3–8 см больше Ог3.',
   }),
   spec({
-    id: 'underbust', short: 'Опг', title: 'Обхват под грудью', group: 'torso', kind: 'girth', min: 600, max: 1400,
+    id: 'underbust', gost: '17', short: 'Опг', title: 'Обхват под грудью', group: 'torso', kind: 'girth', min: 600, max: 1400,
     hint: 'Горизонтально сразу под грудными железами.',
   }),
   spec({
-    id: 'neck', short: 'Ош', title: 'Обхват шеи', group: 'torso', kind: 'girth', min: 280, max: 500,
+    id: 'neck', gost: '13', short: 'Ош', title: 'Обхват шеи', group: 'torso', kind: 'girth', min: 280, max: 500,
     hint: 'По основанию шеи: сзади через седьмой шейный позвонок (выступающая косточка), спереди через ярёмную впадину.',
   }),
   spec({
-    id: 'shoulderLength', short: 'Шп', title: 'Ширина плеча', group: 'torso', kind: 'width', min: 90, max: 180,
+    id: 'shoulderLength', gost: '31', short: 'Шп', title: 'Ширина плеча', group: 'torso', kind: 'width', min: 90, max: 180,
     hint: 'От основания шеи до плечевой точки (край плеча, где начинается рука) по верху плеча.',
   }),
   spec({
-    id: 'backWidth', short: 'Шс', title: 'Ширина спины', group: 'torso', kind: 'width', min: 260, max: 500,
+    id: 'backWidth', gost: '47', short: 'Шс', title: 'Ширина спины', group: 'torso', kind: 'width', min: 260, max: 560,
     hint: 'Сзади по лопаткам, горизонтально между складками, где рука соединяется с туловищем. Руки опущены. Вводите полную ширину, а не половину.',
   }),
   spec({
-    id: 'chestWidth', short: 'Шг', title: 'Ширина груди', group: 'torso', kind: 'width', min: 250, max: 480,
+    id: 'chestWidth', gost: '45', short: 'Шг', title: 'Ширина груди', group: 'torso', kind: 'width', min: 250, max: 560,
     hint: 'Спереди над грудью, горизонтально между складками, где рука соединяется с туловищем. Полная ширина, а не половина.',
   }),
   spec({
-    id: 'bustSpan', short: 'Цг', title: 'Расстояние между центрами груди', group: 'torso', kind: 'width', min: 120, max: 300,
+    id: 'bustSpan', gost: '46', short: 'Цг', title: 'Расстояние между центрами груди', group: 'torso', kind: 'width', min: 120, max: 300,
     hint: 'Горизонтально между выступающими точками груди. Полное расстояние, а не половина.',
   }),
   spec({
-    id: 'bustHeight', short: 'Вг', title: 'Высота груди', group: 'torso', kind: 'length', min: 180, max: 400,
+    id: 'bustHeight', gost: '35а', short: 'Вг', title: 'Высота груди', group: 'torso', kind: 'length', min: 180, max: 400,
     hint: 'От точки основания шеи у плеча до выступающей точки груди.',
   }),
   spec({
-    id: 'frontLength', short: 'Дтп', title: 'Длина переда до талии', group: 'torso', kind: 'length', min: 340, max: 580,
+    id: 'frontLength', gost: '36а', short: 'Дтп', title: 'Длина переда до талии', group: 'torso', kind: 'length', min: 340, max: 580,
     hint: 'От точки основания шеи у плеча через выступающую точку груди до линии талии (тесьмы).',
   }),
   spec({
-    id: 'backLength', short: 'Дтс', title: 'Длина спины до талии', group: 'torso', kind: 'length', min: 330, max: 520,
+    id: 'backLength', gost: '40', short: 'Дтс', title: 'Длина спины до талии', group: 'torso', kind: 'length', min: 330, max: 520,
     hint: 'По позвоночнику от седьмого шейного позвонка до линии талии (тесьмы). Попросите помощника.',
   }),
   spec({
@@ -115,17 +117,17 @@ export const MEASUREMENT_LIST = [
     hint: 'Сзади от пересечения позвоночника и линии талии до плечевой точки, по прямой.',
   }),
   spec({
-    id: 'armholeDepth', short: 'Впрз', title: 'Высота проймы сзади', group: 'torso', kind: 'length', min: 140, max: 280,
+    id: 'armholeDepth', gost: '39', short: 'Впрз', title: 'Высота проймы сзади', group: 'torso', kind: 'length', min: 140, max: 280,
     hint: 'По позвоночнику от седьмого шейного позвонка до горизонтали на уровне складок подмышек сзади. Удобно зажать под мышками линейку.',
   }),
 
   // Рука
   spec({
-    id: 'upperArm', short: 'Оп', title: 'Обхват плеча', group: 'arm', kind: 'girth', min: 200, max: 500,
+    id: 'upperArm', gost: '28', short: 'Оп', title: 'Обхват плеча', group: 'arm', kind: 'girth', min: 200, max: 500,
     hint: 'Горизонтально вокруг самой полной части руки выше локтя, рука опущена и расслаблена.',
   }),
   spec({
-    id: 'wrist', short: 'Озап', title: 'Обхват запястья', group: 'arm', kind: 'girth', min: 120, max: 220,
+    id: 'wrist', gost: '29', short: 'Озап', title: 'Обхват запястья', group: 'arm', kind: 'girth', min: 120, max: 220,
     hint: 'Вокруг запястья через выступающую косточку.',
   }),
   spec({
@@ -143,7 +145,7 @@ export const MEASUREMENT_LIST = [
     hint: 'Сбоку от линии талии (тесьмы) до линии обхвата бёдер.',
   }),
   spec({
-    id: 'crotchDepth', short: 'Вс', title: 'Высота сидения', group: 'legs', kind: 'length', min: 200, max: 380,
+    id: 'crotchDepth', gost: '49', short: 'Вс', title: 'Высота сидения', group: 'legs', kind: 'length', min: 200, max: 380,
     hint: 'Сядьте на твёрдый ровный стул. Сбоку от линии талии до сиденья, по прямой.',
   }),
   spec({
@@ -151,7 +153,7 @@ export const MEASUREMENT_LIST = [
     hint: 'Сбоку от линии талии до середины колена.',
   }),
   spec({
-    id: 'waistToFloor', short: 'Дсб', title: 'Длина от талии до пола сбоку', group: 'legs', kind: 'length', min: 850, max: 1300,
+    id: 'waistToFloor', gost: '25', short: 'Дсб', title: 'Длина от талии до пола сбоку', group: 'legs', kind: 'length', min: 850, max: 1300,
     hint: 'Сбоку от линии талии до пола, без обуви.',
   }),
   spec({
@@ -163,19 +165,19 @@ export const MEASUREMENT_LIST = [
     hint: 'Спереди посередине от линии талии через выступ живота до пола, без обуви.',
   }),
   spec({
-    id: 'thigh', short: 'Обед', title: 'Обхват бедра', group: 'legs', kind: 'girth', min: 400, max: 900,
+    id: 'thigh', gost: '21', short: 'Обед', title: 'Обхват бедра', group: 'legs', kind: 'girth', min: 400, max: 900,
     hint: 'Горизонтально вокруг ноги у самого верха, сразу под ягодичной складкой. Ноги на ширине плеч, вес на обе ноги.',
   }),
   spec({
-    id: 'knee', short: 'Ок', title: 'Обхват колена', group: 'legs', kind: 'girth', min: 270, max: 560,
+    id: 'knee', gost: '22', short: 'Ок', title: 'Обхват колена', group: 'legs', kind: 'girth', min: 270, max: 560,
     hint: 'Вокруг ноги через середину коленной чашечки.',
   }),
   spec({
-    id: 'calf', short: 'Ои', title: 'Обхват икры', group: 'legs', kind: 'girth', min: 250, max: 520,
+    id: 'calf', gost: '23', short: 'Ои', title: 'Обхват икры', group: 'legs', kind: 'girth', min: 250, max: 520,
     hint: 'Горизонтально вокруг самой полной части икры.',
   }),
   spec({
-    id: 'ankle', short: 'Ощ', title: 'Обхват щиколотки', group: 'legs', kind: 'girth', min: 170, max: 330,
+    id: 'ankle', gost: '24', short: 'Ощ', title: 'Обхват щиколотки', group: 'legs', kind: 'girth', min: 170, max: 330,
     hint: 'Вокруг самого узкого места ноги над косточками.',
   }),
 

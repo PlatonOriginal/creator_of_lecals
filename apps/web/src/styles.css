@@ -82,7 +82,8 @@ main { flex: 1; display: flex; }
   text-align: right;
 }
 
-.slider { display: grid; grid-template-columns: 1fr 1.3fr; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+.slider { display: grid; grid-template-columns: 1fr 1.3fr 56px; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+.slider .num { width: 56px; font-size: 15px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 8px; text-align: right; background: var(--panel); color: var(--text); }
 .slider input { width: 100%; accent-color: var(--accent); }
 
 .errors { color: var(--error); font-size: 13px; padding-left: 18px; }
@@ -245,6 +246,9 @@ button {
 .fit td.off { color: #8a5a00; }
 .manual summary { cursor: pointer; margin: 14px 0 4px; font-size: 14px; }
 .panel .hint button.link { padding: 0; font-size: inherit; }
+
+.fit .cm-input input { width: 72px; padding: 4px 6px; font-size: 15px; }
+.fit .cm-input { gap: 4px; }
 
 /* Pattern page (M2) */
 .field select { font: inherit; font-size: 15px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; max-width: 60%; background: var(--panel); color: var(--text); }

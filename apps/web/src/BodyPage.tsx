@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   type AnnyBody,
+  type BodyMeasures,
   type FitResult,
   type FitTarget,
   type LocalChanges,
   type Phenotypes,
   FEMALE_BASE,
   fitBody,
+  measureBody,
   loadAnnyBody,
 } from '@lecals/body'
 import { formatCm } from '@lecals/core'
 import { type BodyViewer, createBodyViewer } from '@lecals/viewer'
+import { CmInput } from './CmInput'
 import type { Figure } from './figureStore'
 
 const PHENOTYPE_SLIDERS: { id: keyof Phenotypes; title: string }[] = [
@@ -58,7 +61,15 @@ interface Stats {
   benchMs?: number
 }
 
-export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpenMeasurements: () => void }) {
+export function BodyPage({
+  figure,
+  onChange,
+  onOpenMeasurements,
+}: {
+  figure: Figure
+  onChange: (f: Figure) => void
+  onOpenMeasurements: () => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<BodyViewer | null>(null)
   const bodyRef = useRef<AnnyBody | null>(null)
@@ -70,8 +81,10 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
   const [fitting, setFitting] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [refit, setRefit] = useState(0)
+  const [current, setCurrent] = useState<BodyMeasures | null>(null)
   const target = fitTarget(figure)
-  const targetKey = JSON.stringify(target ?? null)
+  // Refit only once typing has paused: a fit takes a second or more on a phone.
+  const targetKey = useDebounced(JSON.stringify(target ?? null), 800)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
   const [fps, setFps] = useState(0)
@@ -122,7 +135,16 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
     viewer.updatePositions(v)
     const ms = performance.now() - t
     setStats((s) => (s ? { ...s, recomputeMs: ms } : s))
-  }, [phen, local, scale])
+    // Measure the mannequin as it is now, after the sliders settle.
+    const timer = setTimeout(() => {
+      try {
+        setCurrent(measureBody({ vertices: v, faces: body.faces }))
+      } catch {
+        setCurrent(null)
+      }
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [phen, local, scale, loaded])
 
   // Fit the mannequin to the measurements once the body is loaded and whenever they change.
   useEffect(() => {
@@ -148,6 +170,14 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
     setFit(null)
   }
 
+  function setMeasurement(id: (typeof FIT_ROWS)[number]['id'], v: number | undefined) {
+    const values = { ...figure.values }
+    if (v === undefined) delete values[id]
+    else values[id] = v
+    const confirmed = figure.confirmed.includes(id) ? figure.confirmed : [...figure.confirmed, id]
+    onChange({ values, confirmed })
+  }
+
   function bench() {
     const body = bodyRef.current
     if (!body || !bufRef.current) return
@@ -171,46 +201,47 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
         <h2>Манекен по меркам</h2>
         {!target && (
           <p className="hint">
-            Введите рост и обхваты во вкладке «Мерки», и манекен подстроится под них.{' '}
+            Введите рост (и, если есть, обхваты) здесь или во вкладке «Мерки», и манекен подстроится под них.{' '}
             <button className="link" onClick={onOpenMeasurements}>
-              Перейти к меркам
+              Все мерки
             </button>
           </p>
         )}
-        {target && fit && (
-          <>
-            <table className="fit">
-              <thead>
-                <tr>
-                  <th />
-                  <th>Мерка</th>
-                  <th>Манекен</th>
+        <table className="fit">
+          <thead>
+            <tr>
+              <th />
+              <th>Мерка</th>
+              <th>Манекен</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FIT_ROWS.map((r) => {
+              const want = figure.values[r.id]
+              const have = current?.[r.id]
+              return (
+                <tr key={r.id}>
+                  <td>{r.title}</td>
+                  <td>
+                    <CmInput label={r.title} value={want} onChange={(v) => setMeasurement(r.id, v)} />
+                  </td>
+                  <td className={want !== undefined && have !== undefined && Math.abs(have - want) > 10 ? 'off' : ''}>
+                    {have === undefined ? '—' : formatCm(have)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {FIT_ROWS.map((r) =>
-                  target[r.id] === undefined ? null : (
-                    <tr key={r.id}>
-                      <td>{r.title}</td>
-                      <td>{formatCm(target[r.id]!)}</td>
-                      <td className={Math.abs(fit.measured[r.id] - target[r.id]!) > 10 ? 'off' : ''}>
-                        {formatCm(fit.measured[r.id])}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-            <p className="hint">
-              Обхваты на манекене меряются как сантиметровой лентой. Пока подгоняются рост и три главных обхвата;
-              остальные мерки (спина, плечи, руки, ноги) манекен возьмёт на этапе M4. Подбор занял{' '}
-              {Math.round(fit.ms)} мс.
-            </p>
-          </>
+              )
+            })}
+          </tbody>
+        </table>
+        {target && fit && (
+          <p className="hint">
+            Манекен подобран по меркам за {Math.round(fit.ms)} мс. Обхваты на нём меряются как сантиметровой лентой. Пока
+            подгоняются рост и три главных обхвата; остальные мерки (спина, плечи, руки, ноги) добавятся на этапе M4.
+          </p>
         )}
         {target && !fit && !fitting && loaded && (
           <p className="hint">
-            Фигура изменена вручную.{' '}
+            Фигура изменена вручную, в столбце «Манекен» её текущие размеры.{' '}
             <button className="link" onClick={() => setRefit((n) => n + 1)}>
               Вернуть по меркам
             </button>
@@ -240,34 +271,32 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
         </button>
         <details className="manual">
         <summary>Ручная настройка</summary>
+        <p className="hint">
+          Значения в процентах: у параметров фигуры 0–100, у местных изменений 0 — без изменений, 100 — полное
+          изменение модели, больше 100 — с запасом для крупных фигур.
+        </p>
         <h2>Фигура</h2>
         {PHENOTYPE_SLIDERS.map((s) => (
-          <label key={s.id} className="slider">
-            <span>{s.title}</span>
-            <input
-              type="range"
-              min={s.id === 'age' ? 0.55 : 0}
-              max={1}
-              step={0.01}
-              value={phen[s.id] ?? 0.5}
-              onChange={(e) => manual(() => setPhen({ ...phen, [s.id]: Number(e.target.value) }))}
-            />
-          </label>
+          <Slider
+            key={s.id}
+            title={s.title}
+            min={s.id === 'age' ? 0.55 : 0}
+            max={1}
+            value={phen[s.id] ?? 0.5}
+            onChange={(v) => manual(() => setPhen({ ...phen, [s.id]: v }))}
+          />
         ))}
         <h2>Местные изменения</h2>
         <p className="hint">Обхваты груди, талии и бёдер подбираются по меркам автоматически.</p>
         {LOCAL_SLIDERS.map((s) => (
-          <label key={s.id} className="slider">
-            <span>{s.title}</span>
-            <input
-              type="range"
-              min={-1}
-              max={1}
-              step={0.01}
-              value={local[s.id] ?? 0}
-              onChange={(e) => manual(() => setLocal({ ...local, [s.id]: Number(e.target.value) }))}
-            />
-          </label>
+          <Slider
+            key={s.id}
+            title={s.title}
+            min={-1}
+            max={2.5}
+            value={local[s.id] ?? 0}
+            onChange={(v) => manual(() => setLocal({ ...local, [s.id]: v }))}
+          />
         ))}
         <button className="secondary" onClick={() => manual(() => (setPhen(DEFAULT_PHENOTYPES), setLocal({}), setScale(1)))}>
           Сбросить
@@ -279,4 +308,56 @@ export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpe
       </div>
     </section>
   )
+}
+
+/** A slider with a number box: shows the current value in percent and accepts typed values. */
+function Slider({
+  title,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  title: string
+  min: number
+  max: number
+  value: number
+  onChange: (v: number) => void
+}) {
+  const pct = Math.round(value * 100)
+  const [text, setText] = useState(String(pct))
+  useEffect(() => {
+    if (Number(text) !== pct) setText(String(pct))
+    // Only follow outside changes; typing is handled below.
+  }, [pct])
+  const clamp = (v: number) => Math.min(max, Math.max(min, v))
+  return (
+    <label className="slider">
+      <span>{title}</span>
+      <input type="range" min={min} max={max} step={0.01} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input
+        type="text"
+        inputMode="numeric"
+        className="num"
+        aria-label={`${title}, %`}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          const v = Number(e.target.value.replace(',', '.'))
+          if (e.target.value.trim() !== '' && Number.isFinite(v)) onChange(clamp(v / 100))
+        }}
+        onBlur={() => setText(String(Math.round(clamp(Number(text) / 100 || 0) * 100)))}
+        onFocus={(e) => e.target.select()}
+      />
+    </label>
+  )
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return v
 }
