@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { type AnnyBody, type LocalChanges, type Phenotypes, loadAnnyBody } from '@lecals/body'
+import {
+  type AnnyBody,
+  type FitResult,
+  type FitTarget,
+  type LocalChanges,
+  type Phenotypes,
+  FEMALE_BASE,
+  fitBody,
+  loadAnnyBody,
+} from '@lecals/body'
+import { formatCm } from '@lecals/core'
 import { type BodyViewer, createBodyViewer } from '@lecals/viewer'
+import type { Figure } from './figureStore'
 
 const PHENOTYPE_SLIDERS: { id: keyof Phenotypes; title: string }[] = [
   { id: 'height', title: 'Рост' },
@@ -24,16 +35,21 @@ const LOCAL_SLIDERS: { id: string; title: string }[] = [
   { id: 'buttocks-volume-incr', title: 'Ягодицы' },
 ]
 
-const DEFAULT_PHENOTYPES: Phenotypes = {
-  gender: 1,
-  age: 0.72,
-  height: 0.45,
-  weight: 0.5,
-  muscle: 0.45,
-  proportions: 0.5,
-  cupsize: 0.5,
-  firmness: 0.5,
+const DEFAULT_PHENOTYPES: Phenotypes = FEMALE_BASE
+
+/** The measurements the mannequin is fitted to, or undefined without a height. */
+function fitTarget(f: Figure): FitTarget | undefined {
+  const { height, bust, waist, hips } = f.values
+  if (height === undefined) return undefined
+  return { height, bust, waist, hips }
 }
+
+const FIT_ROWS = [
+  { id: 'height', title: 'Рост' },
+  { id: 'bust', title: 'Обхват груди Ог3' },
+  { id: 'waist', title: 'Обхват талии' },
+  { id: 'hips', title: 'Обхват бёдер' },
+] as const
 
 interface Stats {
   bytes: number
@@ -42,13 +58,20 @@ interface Stats {
   benchMs?: number
 }
 
-export function BodyPage() {
+export function BodyPage({ figure, onOpenMeasurements }: { figure: Figure; onOpenMeasurements: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<BodyViewer | null>(null)
   const bodyRef = useRef<AnnyBody | null>(null)
   const bufRef = useRef<Float32Array | null>(null)
   const [phen, setPhen] = useState<Phenotypes>(DEFAULT_PHENOTYPES)
   const [local, setLocal] = useState<LocalChanges>({})
+  const [scale, setScale] = useState(1)
+  const [fit, setFit] = useState<FitResult | null>(null)
+  const [fitting, setFitting] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [refit, setRefit] = useState(0)
+  const target = fitTarget(figure)
+  const targetKey = JSON.stringify(target ?? null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
   const [fps, setFps] = useState(0)
@@ -75,6 +98,7 @@ export function BodyPage() {
         bufRef.current = v
         viewer.setMesh(new Float32Array(v), body.faces)
         setStats({ bytes, loadMs: performance.now() - t, recomputeMs })
+        setLoaded(true)
       })
       .catch((e: Error) => setError(e.message))
     const timer = setInterval(() => {
@@ -93,11 +117,36 @@ export function BodyPage() {
     const viewer = viewerRef.current
     if (!body || !viewer || !bufRef.current) return
     const t = performance.now()
-    body.restVertices(phen, local, bufRef.current)
-    viewer.updatePositions(bufRef.current)
+    const v = body.restVertices(phen, local, bufRef.current)
+    if (scale !== 1) for (let i = 0; i < v.length; i++) v[i]! *= scale
+    viewer.updatePositions(v)
     const ms = performance.now() - t
     setStats((s) => (s ? { ...s, recomputeMs: ms } : s))
-  }, [phen, local])
+  }, [phen, local, scale])
+
+  // Fit the mannequin to the measurements once the body is loaded and whenever they change.
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!loaded || !body) return
+    const t = JSON.parse(targetKey) as FitTarget | null
+    if (!t) return
+    setFitting(true)
+    // Let the «Подбираю…» overlay paint before the fit blocks the main thread.
+    const timer = setTimeout(() => {
+      const r = fitBody(body, t)
+      setPhen(r.phenotypes)
+      setLocal(r.local)
+      setScale(r.scale)
+      setFit(r)
+      setFitting(false)
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [loaded, targetKey, refit])
+
+  function manual(update: () => void) {
+    update()
+    setFit(null)
+  }
 
   function bench() {
     const body = bodyRef.current
@@ -115,9 +164,58 @@ export function BodyPage() {
       <div className="viewport">
         <canvas ref={canvasRef} />
         {!stats && !error && <div className="overlay">Загружаю манекен…</div>}
+        {fitting && <div className="overlay">Подбираю фигуру по меркам…</div>}
         {error && <div className="overlay error">{error}</div>}
       </div>
       <div className="panel">
+        <h2>Манекен по меркам</h2>
+        {!target && (
+          <p className="hint">
+            Введите рост и обхваты во вкладке «Мерки», и манекен подстроится под них.{' '}
+            <button className="link" onClick={onOpenMeasurements}>
+              Перейти к меркам
+            </button>
+          </p>
+        )}
+        {target && fit && (
+          <>
+            <table className="fit">
+              <thead>
+                <tr>
+                  <th />
+                  <th>Мерка</th>
+                  <th>Манекен</th>
+                </tr>
+              </thead>
+              <tbody>
+                {FIT_ROWS.map((r) =>
+                  target[r.id] === undefined ? null : (
+                    <tr key={r.id}>
+                      <td>{r.title}</td>
+                      <td>{formatCm(target[r.id]!)}</td>
+                      <td className={Math.abs(fit.measured[r.id] - target[r.id]!) > 10 ? 'off' : ''}>
+                        {formatCm(fit.measured[r.id])}
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+            <p className="hint">
+              Обхваты на манекене меряются как сантиметровой лентой. Пока подгоняются рост и три главных обхвата;
+              остальные мерки (спина, плечи, руки, ноги) манекен возьмёт на этапе M4. Подбор занял{' '}
+              {Math.round(fit.ms)} мс.
+            </p>
+          </>
+        )}
+        {target && !fit && !fitting && loaded && (
+          <p className="hint">
+            Фигура изменена вручную.{' '}
+            <button className="link" onClick={() => setRefit((n) => n + 1)}>
+              Вернуть по меркам
+            </button>
+          </p>
+        )}
         {stats && (
           <dl className="stats">
             <dt>Загрузка</dt>
@@ -140,6 +238,8 @@ export function BodyPage() {
         <button onClick={bench} disabled={!stats} className="secondary">
           Замерить скорость пересчёта
         </button>
+        <details className="manual">
+        <summary>Ручная настройка</summary>
         <h2>Фигура</h2>
         {PHENOTYPE_SLIDERS.map((s) => (
           <label key={s.id} className="slider">
@@ -150,12 +250,12 @@ export function BodyPage() {
               max={1}
               step={0.01}
               value={phen[s.id] ?? 0.5}
-              onChange={(e) => setPhen({ ...phen, [s.id]: Number(e.target.value) })}
+              onChange={(e) => manual(() => setPhen({ ...phen, [s.id]: Number(e.target.value) }))}
             />
           </label>
         ))}
         <h2>Местные изменения</h2>
-        <p className="hint">Эти параметры потом подбираются автоматически, чтобы обхваты совпали с мерками (этап M4).</p>
+        <p className="hint">Обхваты груди, талии и бёдер подбираются по меркам автоматически.</p>
         {LOCAL_SLIDERS.map((s) => (
           <label key={s.id} className="slider">
             <span>{s.title}</span>
@@ -165,13 +265,14 @@ export function BodyPage() {
               max={1}
               step={0.01}
               value={local[s.id] ?? 0}
-              onChange={(e) => setLocal({ ...local, [s.id]: Number(e.target.value) })}
+              onChange={(e) => manual(() => setLocal({ ...local, [s.id]: Number(e.target.value) }))}
             />
           </label>
         ))}
-        <button className="secondary" onClick={() => (setPhen(DEFAULT_PHENOTYPES), setLocal({}))}>
+        <button className="secondary" onClick={() => manual(() => (setPhen(DEFAULT_PHENOTYPES), setLocal({}), setScale(1)))}>
           Сбросить
         </button>
+        </details>
         <p className="hint">
           Модель тела Anny (NAVER Labs, Apache 2.0) на ресурсах MakeHuman (CC0).
         </p>
