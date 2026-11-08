@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
   MEASUREMENTS,
-  type MeasurementId,
-  type Measurements,
   SAMPLE_MEASUREMENTS,
+  TEST_PANEL_MEASUREMENTS,
   draftTestPanel,
   validateMeasurements,
 } from '@lecals/core'
+import { CmInput } from './CmInput'
+import type { Figure } from './figureStore'
 import { pieceToSvg } from '@lecals/export/svg'
 import type { PaperSize } from '@lecals/export/pdf'
 import fontUrl from 'dejavu-fonts-ttf/ttf/DejaVuSans.ttf?url'
@@ -29,18 +30,27 @@ function download(bytes: Uint8Array, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
-export function PatternPage() {
-  const [m, setM] = useState<Measurements>(SAMPLE_MEASUREMENTS)
+type TestM = (typeof TEST_PANEL_MEASUREMENTS)[number]
+
+export function PatternPage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
+  // The test piece takes the user's measurements; gaps come from the sample figure.
+  const m = Object.fromEntries(
+    TEST_PANEL_MEASUREMENTS.map((id) => [id, figure.values[id] ?? SAMPLE_MEASUREMENTS[id]]),
+  ) as Record<TestM, number>
+  const key = TEST_PANEL_MEASUREMENTS.map((id) => m[id]).join()
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
-  const errors = validateMeasurements(m)
+  const issues = validateMeasurements(m, { required: TEST_PANEL_MEASUREMENTS, plausibility: false })
+  const errors = issues.filter((i) => i.level === 'error').map((i) => i.message)
+  if (m.waist > m.hips) errors.push('Для тестовой детали обхват талии должен быть меньше обхвата бёдер')
 
   const drafted = useMemo(() => {
-    if (validateMeasurements(m).length) return undefined
+    if (errors.length) return undefined
     const t = performance.now()
     const piece = draftTestPanel(m)
     return { piece, svg: pieceToSvg(piece), ms: performance.now() - t }
-  }, [m])
+    // `key` lists every value the draft uses.
+  }, [key])
 
   async function makePdf(paperName: 'A4' | 'A0') {
     if (!drafted) return
@@ -73,19 +83,20 @@ export function PatternPage() {
       <div className="panel">
         <h2>Мерки</h2>
         <p className="hint">Тестовая деталь, а не методика: проверяем чертёжный движок и печать.</p>
-        {(Object.keys(MEASUREMENTS) as MeasurementId[]).map((id) => (
+        <p className="hint">Мерки берутся из вкладки «Мерки»; здесь их можно поправить.</p>
+        {TEST_PANEL_MEASUREMENTS.map((id) => (
           <label key={id} className="field">
             <span>{MEASUREMENTS[id].title}</span>
-            <span className="input">
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.5"
-                value={m[id] / 10}
-                onChange={(e) => setM({ ...m, [id]: Math.round(Number(e.target.value) * 10) })}
-              />
-              см
-            </span>
+            <CmInput
+              label={MEASUREMENTS[id].title}
+              value={figure.values[id] ?? m[id]}
+              onChange={(v) => {
+                const values = { ...figure.values }
+                if (v === undefined) delete values[id]
+                else values[id] = v
+                onChange({ ...figure, values })
+              }}
+            />
           </label>
         ))}
         {errors.length > 0 && (
