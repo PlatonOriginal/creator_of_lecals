@@ -151,3 +151,88 @@ button {
   .page.body .viewport { flex: 1; height: calc(100dvh - 140px); }
   .page.body .panel { width: 360px; flex-shrink: 0; max-height: calc(100dvh - 140px); overflow: auto; }
 }
+
+/* M1: measurements */
+.short { color: var(--muted); font-weight: normal; font-size: 0.85em; }
+.panel h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 0 4px; }
+
+.cm-input { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.cm-input input {
+  width: 84px;
+  font-size: 16px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: right;
+  background: var(--panel);
+  color: var(--text);
+}
+.cm-input.big { gap: 8px; }
+.cm-input.big input { width: 120px; font-size: 26px; padding: 8px 10px; text-align: center; }
+.cm-input.big .unit { font-size: 18px; }
+.panel .cm-input .step {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 24px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--accent);
+}
+
+.progress { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress div { height: 100%; background: var(--accent); transition: width 0.2s; }
+
+.step-meta { color: var(--muted); font-size: 13px; margin: 0 0 4px; }
+.step h2 { font-size: 20px; margin: 0 0 10px; }
+.step-body { display: flex; gap: 12px; align-items: flex-start; }
+.sketch { width: 38%; max-width: 170px; flex-shrink: 0; height: auto; }
+.how { font-size: 15px; line-height: 1.45; margin: 0; }
+.step-input { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 14px; }
+.step-input .hint { margin: 4px 0 0; text-align: center; }
+
+.sketch .body { fill: #efe7df; stroke: #cbbdb1; stroke-width: 1; stroke-linejoin: round; }
+.sketch .spine { stroke: #cbbdb1; stroke-dasharray: 3 3; }
+.sketch .m-line,
+.sketch .m-girth path { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.sketch .m-girth .m-back { stroke-dasharray: 3 3; stroke-width: 1.6; }
+.sketch .m-dot { fill: var(--accent); }
+.sketch .view-label { font-size: 11px; fill: var(--muted); }
+
+.issues { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.4; }
+.issues li { padding: 8px 10px; border-radius: 8px; }
+.issues li.error { background: #fbeae8; color: var(--error); }
+.issues li.warning { background: #fdf3e1; color: #8a5a00; }
+
+.buttons.nav button { flex: 1; }
+.panel button.link { background: none; border: none; color: var(--accent); padding: 10px 0 0; font-size: 14px; }
+
+.typical { font-size: 14px; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.more summary { cursor: pointer; margin-top: 12px; }
+
+.summary { list-style: none; padding: 0; margin: 0; }
+.summary li { border-bottom: 1px solid var(--border); }
+.summary li .issues { margin: 0 0 8px; }
+.panel .summary .row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 10px 0;
+  border-radius: 0;
+  font-size: 14px;
+}
+.summary .row.error .val { color: var(--error); }
+.summary .row.warning .val { color: #8a5a00; }
+.summary .val { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag { margin-left: 6px; font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; padding: 1px 6px; }
+
+@media (min-width: 900px) {
+  .page.measure { justify-content: center; }
+  .page.measure .panel { width: 560px; }
+  .page.measure .progress { display: none; }
+}

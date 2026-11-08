@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { draftTestPanel } from './testPanel'
-import { SAMPLE_MEASUREMENTS, validateMeasurements } from '../measurements'
+import { SAMPLE_MEASUREMENTS } from '../measurements'
 
 describe('draftTestPanel', () => {
   const piece = draftTestPanel(SAMPLE_MEASUREMENTS)
@@ -27,16 +27,5 @@ describe('draftTestPanel', () => {
   it('recomputes from measurements', () => {
     const bigger = draftTestPanel({ ...SAMPLE_MEASUREMENTS, hips: 1100 })
     expect(bigger.bbox.maxX).toBeGreaterThan(piece.bbox.maxX + 30)
-  })
-})
-
-describe('validateMeasurements', () => {
-  it('accepts the sample figure', () => {
-    expect(validateMeasurements(SAMPLE_MEASUREMENTS)).toEqual([])
-  })
-  it('catches waist larger than hips', () => {
-    expect(validateMeasurements({ ...SAMPLE_MEASUREMENTS, waist: 1000 })).toContain(
-      'Обхват талии больше обхвата бёдер: проверьте мерки',
-    )
   })
 })

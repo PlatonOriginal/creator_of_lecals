@@ -1,30 +1,42 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import { MeasurePage } from './MeasurePage'
 import { PatternPage } from './PatternPage'
+import { loadFigure, saveFigure } from './figureStore'
 
 // Three.js and the body model are loaded only when the mannequin tab opens.
 const BodyPage = lazy(() => import('./BodyPage').then((m) => ({ default: m.BodyPage })))
 
-type Tab = 'pattern' | 'body'
+type Tab = 'measure' | 'pattern' | 'body'
+
+const TABS: { id: Tab; title: string }[] = [
+  { id: 'measure', title: 'Мерки' },
+  { id: 'pattern', title: 'Выкройка' },
+  { id: 'body', title: 'Манекен' },
+]
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('pattern')
+  const [tab, setTab] = useState<Tab>('measure')
+  const [figure, setFigure] = useState(loadFigure)
+  useEffect(() => saveFigure(figure), [figure])
+
   return (
     <div className="app">
       <header className="header">
         <h1>Создатель выкроек</h1>
-        <span className="badge">прототип M0</span>
+        <span className="badge">прототип M1</span>
       </header>
       <nav className="tabs">
-        <button className={tab === 'pattern' ? 'active' : ''} onClick={() => setTab('pattern')}>
-          Выкройка
-        </button>
-        <button className={tab === 'body' ? 'active' : ''} onClick={() => setTab('body')}>
-          Манекен
-        </button>
+        {TABS.map((t) => (
+          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+            {t.title}
+          </button>
+        ))}
       </nav>
       <main>
         <Suspense fallback={<p className="hint">Загрузка…</p>}>
-          {tab === 'pattern' ? <PatternPage /> : <BodyPage />}
+          {tab === 'measure' && <MeasurePage figure={figure} onChange={setFigure} />}
+          {tab === 'pattern' && <PatternPage figure={figure} onChange={setFigure} />}
+          {tab === 'body' && <BodyPage />}
         </Suspense>
       </main>
     </div>

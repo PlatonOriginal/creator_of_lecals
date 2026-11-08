@@ -24,14 +24,16 @@ export const DEFAULT_TEST_PANEL_OPTIONS: TestPanelOptions = {
   dartLength: 90,
 }
 
-type M = 'waist' | 'hips' | 'waistToHips' | 'skirtLength'
+/** Measurements the test piece needs. */
+export const TEST_PANEL_MEASUREMENTS = ['waist', 'hips', 'waistToHips', 'skirtLength'] as const
+type M = (typeof TEST_PANEL_MEASUREMENTS)[number]
 type O = 'hipEase' | 'seamAllowance' | 'dartLength'
 
 const PART = 'lecals.testPanel'
 
 const testPanelPart: PartDefinition<M, O> = {
   name: PART,
-  measurements: ['waist', 'hips', 'waistToHips', 'skirtLength'],
+  measurements: [...TEST_PANEL_MEASUREMENTS],
   options: {
     hipEase: { mm: 10, min: 0, max: 50 },
     seamAllowance: { mm: 10, min: 0, max: 30 },
@@ -130,10 +132,10 @@ function arrowLine(x: number, y1: number, y2: number): string {
 }
 
 export function draftTestPanel(
-  measurements: Measurements,
+  measurements: Pick<Measurements, M>,
   options: TestPanelOptions = DEFAULT_TEST_PANEL_OPTIONS,
 ): Piece {
-  const pattern = new TestPanelDesign({ measurements: { ...measurements }, options: { ...options } }).draft()
+  const pattern = new TestPanelDesign({ measurements: Object.fromEntries(TEST_PANEL_MEASUREMENTS.map((id) => [id, measurements[id]])), options: { ...options } }).draft()
   const errors = pattern.setStores[0]?.logs.error ?? []
   if (errors.length > 0) throw new Error(`FreeSewing: ${errors.join('; ')}`)
   const fsPart = pattern.parts[0]?.[PART]

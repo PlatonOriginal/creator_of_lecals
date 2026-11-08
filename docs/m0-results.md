@@ -55,4 +55,4 @@ tools/anny-export/ — выгрузка Anny из Python в бинарный ф�
 
 - Прототип опубликован: https://platonoriginal.github.io/creator_of_lecals/
 - Распечатать PDF и проверить квадрат 10 × 10 см.
-- M1: полная схема мерок, мастер снятия мерок, предзаполнение по ГОСТ 31396-2009.
+- M1 сделан: [m1-results.md](m1-results.md).
