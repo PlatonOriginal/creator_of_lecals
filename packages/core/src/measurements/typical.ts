@@ -16,8 +16,9 @@ import { MEASUREMENT_IDS, type MeasurementId, type MeasurementSet, type Measurem
  * together from textbook tables (ЕМКО СЭВ) for the base figure and the usual
  * inter-size and inter-height differences. They are a starting point that the
  * user then measures and corrects, and the yardstick for the plausibility
- * check. They are not the official table: replace them with the exact values
- * from the full text of ГОСТ 31396-2009 when we have it (see docs/m1-results.md).
+ * check. ГОСТ 31396-2009 itself only classifies the figures (table 3, below)
+ * and defines how to measure (table 2); the values of the size features for
+ * each figure are published separately (ОСТ 17-326-86 and its successors).
  */
 interface Regression {
   base: number
@@ -102,10 +103,42 @@ export function leadingOf(m: MeasurementSet): LeadingMeasurements | undefined {
 }
 
 /**
- * The nearest typical figure of ГОСТ 31396-2009: heights 146…182 in steps of
- * 6 cm, Ог3 from 80 cm in steps of 4 cm, Об from 82 cm in steps of 4 cm, and
- * six fullness groups 0…5 by Об − Ог3 = −2, +2, +6, +10, +14, +18 cm.
+ * Typical figures of ГОСТ 31396-2009, table 3: for each fullness group
+ * (Об − Ог3 = −2, +2, +6, +10, +14, +18 cm) the bust girths and the range of
+ * heights (every 6 cm) that exist. 356 figures in all.
  */
+const GROUP_DIFF = [-20, 20, 60, 100, 140, 180]
+type Row = [group: number, busts: number[], minHeight: number, maxHeight: number]
+const GOST_TABLE: Row[] = [
+  [0, [84, 88, 92, 96, 100, 104], 152, 170],
+  [0, [108, 112], 152, 176],
+  [0, [116, 120, 124], 158, 176],
+  [1, [80], 158, 170],
+  [1, [84, 88, 92], 152, 176],
+  [1, [96, 100, 104], 152, 182],
+  [1, [108, 112, 116, 120], 152, 182],
+  [1, [124], 158, 182],
+  [2, [80, 84], 152, 176],
+  [2, [88, 92, 96, 100, 104], 152, 182],
+  [2, [108, 112, 116], 152, 182],
+  [2, [120, 124], 158, 182],
+  [2, [128, 132], 158, 176],
+  [3, [80, 84], 152, 176],
+  [3, [88, 92, 96, 100, 104], 152, 182],
+  [3, [108], 152, 182],
+  [3, [112, 116, 120, 124, 128], 158, 182],
+  [3, [132], 158, 176],
+  [4, [84], 152, 176],
+  [4, [88, 92, 96, 100, 104], 152, 182],
+  [4, [108], 152, 182],
+  [4, [112, 116, 120, 124], 158, 182],
+  [5, [88, 92], 164, 176],
+  [5, [96, 100, 104], 158, 176],
+  [5, [108, 112], 158, 176],
+  [5, [116], 158, 170],
+  [5, [120, 124], 158, 164],
+]
+
 export interface TypicalFigureLabel {
   height: number
   bust: number
@@ -114,19 +147,37 @@ export interface TypicalFigureLabel {
   group: number
   /** «164-88-94» */
   label: string
+  /**
+   * True when the person is within half a step of this figure in every
+   * leading measurement (± 3 cm height, ± 2 cm girths), as the standard defines.
+   */
+  matches: boolean
 }
 
-const GROUP_DIFF = [-20, 20, 60, 100, 140, 180]
+/** All typical figures of the standard, mm. */
+export const GOST_FIGURES: TypicalFigureLabel[] = GOST_TABLE.flatMap(([group, busts, h0, h1]) =>
+  busts.flatMap((b) => {
+    const out: TypicalFigureLabel[] = []
+    for (let h = h0; h <= h1; h += 6) {
+      const hips = b * 10 + GROUP_DIFF[group]!
+      out.push({ height: h * 10, bust: b * 10, hips, group, label: `${h}-${b}-${hips / 10}`, matches: false })
+    }
+    return out
+  }),
+)
 
+/** The nearest typical figure of ГОСТ 31396-2009 (table 3) for the given leading measurements. */
 export function nearestTypicalFigure(lead: LeadingMeasurements): TypicalFigureLabel {
-  const snap = (v: number, start: number, step: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, start + Math.round((v - start) / step) * step))
-  const height = snap(lead.height, 1460, 60, 1460, 1820)
-  const bust = snap(lead.bust, 800, 40, 800, 1360)
-  const diff = lead.hips - bust
-  let group = 0
-  for (let g = 1; g < GROUP_DIFF.length; g++)
-    if (Math.abs(diff - GROUP_DIFF[g]!) < Math.abs(diff - GROUP_DIFF[group]!)) group = g
-  const hips = bust + GROUP_DIFF[group]!
-  return { height, bust, hips, group, label: `${height / 10}-${bust / 10}-${hips / 10}` }
+  let best = GOST_FIGURES[0]!
+  let bestD = Infinity
+  for (const f of GOST_FIGURES) {
+    const d = ((f.height - lead.height) / 60) ** 2 + ((f.bust - lead.bust) / 40) ** 2 + ((f.hips - lead.hips) / 40) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = f
+    }
+  }
+  const matches =
+    Math.abs(best.height - lead.height) <= 30 && Math.abs(best.bust - lead.bust) <= 20 && Math.abs(best.hips - lead.hips) <= 20
+  return { ...best, matches }
 }
