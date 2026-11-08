@@ -1,0 +1,26 @@
+{
+  "name": "creator-of-lecals",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @lecals/web build",
+    "dev": "pnpm --filter @lecals/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "make-test-pdf": "pnpm --filter @lecals/export make-test-pdf",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}

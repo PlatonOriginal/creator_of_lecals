@@ -1,0 +1,34 @@
+import type { PathRole, Piece } from '@lecals/core'
+
+export const STROKES: Record<PathRole, { width: number; dash?: number[] }> = {
+  cut: { width: 0.5 },
+  seam: { width: 0.25, dash: [3, 1.5] },
+  mark: { width: 0.25 },
+  grain: { width: 0.25 },
+  fold: { width: 0.35, dash: [6, 1.5, 1, 1.5] },
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!)
+}
+
+/** SVG of one piece at 1:1 scale (width and height in mm). */
+export function pieceToSvg(piece: Piece, margin = 5): string {
+  const { minX, minY, maxX, maxY } = piece.bbox
+  const w = maxX - minX + 2 * margin
+  const h = maxY - minY + 2 * margin
+  const paths = piece.paths
+    .map((p) => {
+      const s = STROKES[p.role]
+      const dash = s.dash ? ` stroke-dasharray="${s.dash.join(' ')}"` : ''
+      return `<path d="${p.d}" fill="none" stroke="currentColor" stroke-width="${s.width}"${dash} data-role="${p.role}"/>`
+    })
+    .join('')
+  const labels = piece.labels
+    .map((l) => `<text x="${l.x}" y="${l.y}" font-size="${l.size}" fill="currentColor">${escapeXml(l.text)}</text>`)
+    .join('')
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" ` +
+    `viewBox="${minX - margin} ${minY - margin} ${w} ${h}">${paths}${labels}</svg>`
+  )
+}

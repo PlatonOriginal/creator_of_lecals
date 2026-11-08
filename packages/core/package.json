@@ -1,0 +1,15 @@
+{
+  "name": "@lecals/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@freesewing/config": "4.10.2",
+    "@freesewing/core": "4.10.2",
+    "@freesewing/plugin-transform": "4.10.2"
+  }
+}
