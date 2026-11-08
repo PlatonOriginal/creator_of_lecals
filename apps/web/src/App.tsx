@@ -23,7 +23,7 @@ export function App() {
     <div className="app">
       <header className="header">
         <h1>Создатель выкроек</h1>
-        <span className="badge">прототип M1</span>
+        <span className="badge">прототип M2</span>
       </header>
       <nav className="tabs">
         {TABS.map((t) => (

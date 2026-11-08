@@ -1,3 +1,5 @@
 export * from './geometry'
 export * from './measurements'
 export * from './pieces/testPanel'
+export * from './draft/geom'
+export * from './blocks'

@@ -249,3 +249,14 @@ button {
 
 .fit .cm-input input { width: 72px; padding: 4px 6px; font-size: 15px; }
 .fit .cm-input { gap: 4px; }
+
+/* Pattern page (M2) */
+.field select { font: inherit; font-size: 15px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; max-width: 60%; background: var(--panel); color: var(--text); }
+.field.typical .cm-input input { color: var(--muted); font-style: italic; }
+.stats .contents { display: contents; }
+.stats dd.bad { color: var(--error); }
+.calc { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+.calc th { text-align: left; padding: 3px 6px 3px 0; white-space: nowrap; }
+.calc td { padding: 3px 4px; color: var(--muted); }
+.calc td:last-child { text-align: right; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+details summary { cursor: pointer; font-size: 14px; color: var(--accent); margin-top: 8px; }

@@ -1,6 +1,7 @@
 import type { PathRole, Piece } from '@lecals/core'
 
 export const STROKES: Record<PathRole, { width: number; dash?: number[] }> = {
+  net: { width: 0.5 },
   cut: { width: 0.5 },
   seam: { width: 0.25, dash: [3, 1.5] },
   mark: { width: 0.25 },
@@ -30,5 +31,23 @@ export function pieceToSvg(piece: Piece, margin = 5): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" ` +
     `viewBox="${minX - margin} ${minY - margin} ${w} ${h}">${paths}${labels}</svg>`
+  )
+}
+
+/** SVG of several pieces side by side at 1:1, for previews. */
+export function piecesToSvg(pieces: Piece[], gap = 20, margin = 5): string {
+  let x = 0
+  let h = 0
+  const groups = pieces.map((p) => {
+    const { minX, minY, maxX, maxY } = p.bbox
+    const g = `<g transform="translate(${x - minX} ${-minY})">${pieceToSvg(p, 0).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`
+    x += maxX - minX + gap
+    h = Math.max(h, maxY - minY)
+    return g
+  })
+  const w = Math.max(0, x - gap)
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w + 2 * margin}mm" height="${h + 2 * margin}mm" ` +
+    `viewBox="${-margin} ${-margin} ${w + 2 * margin} ${h + 2 * margin}">${groups.join('')}</svg>`
   )
 }

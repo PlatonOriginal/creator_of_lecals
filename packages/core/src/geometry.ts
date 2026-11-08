@@ -3,7 +3,8 @@
  * with y pointing down (as in SVG). Export and UI depend only on these types,
  * not on the drafting engine, so the engine can be replaced later.
  */
-export type PathRole = 'seam' | 'cut' | 'mark' | 'grain' | 'fold'
+/** `net` is the seam line of a block drawn without allowances (stage M2). */
+export type PathRole = 'net' | 'seam' | 'cut' | 'mark' | 'grain' | 'fold'
 
 export interface PiecePath {
   role: PathRole

@@ -54,6 +54,8 @@ const TYPICAL: Record<Exclude<MeasurementId, 'height' | 'bust' | 'hips'>, Regres
   crotchDepth: { base: 265, perHeight: 0.1, perHips: 0.15, spread: 25 },
   waistToKnee: { base: 590, perHeight: 0.35, spread: 30 },
   waistToFloor: { base: 1060, perHeight: 0.6, spread: 35 },
+  waistToFloorBack: { base: 1040, perHeight: 0.6, spread: 35 },
+  waistToFloorFront: { base: 1050, perHeight: 0.6, perHips: -0.05, spread: 35 },
   thigh: { base: 560, perHips: 0.5, spread: 40 },
   knee: { base: 365, perBust: 0.05, perHips: 0.15, spread: 25 },
   calf: { base: 350, perHips: 0.2, spread: 30 },
