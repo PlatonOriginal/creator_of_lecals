@@ -12,12 +12,26 @@ import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silho
  *
  * Main measurements: Ог (bust), От, Об, Дсп (back length), Гпр (armhole
  * depth), Вб (hip height from the 7th vertebra), Ди, Др. For the typical
- * figure the book derives the rest from Ог (valid for Ог 100–116):
- *   Дгс = 1/10·½Ог + 2        back neck width
- *   Вг II = ¼Ог + 5            bust height from the top line
- *   Дтп II = Дсп + 4,5 + (Ог − 100)/10   front length on the dart line
- *   Шс = ⅛Ог + 5,5,  Шпр = ⅛Ог − 0,5,  Шг = ¼Ог − 5   (sum ½Ог)
+ * figure the book derives the rest from Ог. The size-48 example uses the
+ * formulas for Ог 100–116; the full piecewise table «Расчёт размерных
+ * признаков по системе Мюллера» (Ог 80–146) is taken from the Club Sezon
+ * forum thread «Какой техникой кроя вы пользуетесь» (g@la, 28.11.2004):
+ *   Гпр = 1/10·Ог + 12 | 11 | 10,5        (Ог < 83 | 83–116 | 117–146)
+ *   Дгс = 1/20·Ог + 2                    back neck width
+ *   Вг II = ¼Ог + 6 | 5 | 4              (80–95 | 96–115 | 117–146)
+ *   Дтп II = Дсп + 4 | 4,5 | 4,5 + (Ог − 100)/10 | 5 + … | 5,5 + … | 6 + …
+ *            (80–90 | 91–100 | 101–110 | 111–120 | 121–130 | > 130)
+ *   Шс = ⅛Ог + 5,5
+ *   Шпр, Шг, variant 1: ⅛Ог − 1,5 | − 1 | − 0,5;  ¼Ог − 4 | − 4,5 | − 5
+ *            (80–100 | 101–110 | > 110)
+ *   Шпр, Шг, variant 2: ⅛Ог − 1,5 | − 0,5 | + 0,5;  ¼Ог − 4 | − 5 | − 6
+ *            (< 83 | 83–116 | 117–146)  — the book's size 48 matches this one.
  * We do the same, so this block depends on fewer measurements than ЕМКО.
+ *
+ * Müller's Ог is taken over the bust points and the lower shoulder-blade
+ * angles, not level: it is 1–2 см more than ГОСТ Ог3, more for larger
+ * sizes (Сычева, ModaNews, 2009). We add `bustShift` % of Ог3 (1,5 % gives
+ * 1,3 см at Ог3 88 and 1,8 см at 120).
  *
  * Grid (fig. 1): 1–2 = Гпр + 1 (chest line), 1–3 = Дсп (waist), 1–4 = Вб,
  * 1–5 = Ди. CB 1→6→7→8 with 3–6 = 4–7 = 2. 9 on the chest line; 9–10 = Шс,
@@ -43,9 +57,10 @@ import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silho
  * 14–17 = ½ hem width. S = the front armhole from the notch to 11a laid on
  * the lower cap; the seam runs from S parallel to the front roll.
  *
- * Deviations: Гпр is taken from our measurement Впрз (ГОСТ, to the back
- * armpit corner) + 2,5 см, which is where Müller's tape sits under the arm
- * (on the typical 164-96 figure 17,9 + 2,5 ≈ 1/10·96 + 11). The one-seam
+ * Deviations: Гпр comes from Ог by the table above (`depthFromBust` = 1).
+ * Müller measures Впрз to the lower shoulder-blade angles, so our ГОСТ Впрз
+ * (to the back armpit corner) does not map onto it; with `depthFromBust` = 0
+ * we take Впрз + 2,5 см instead, for figures far from typical. The one-seam
  * sleeve is unfolded about the rolls; the bend of the elbow roll gives an
  * elbow dart in the back seam. Hem width = Озап + ease (the book gives 24 см
  * for size 48 without a formula).
@@ -68,6 +83,28 @@ export interface MullerDressOptions extends Record<string, number> {
   sleeveHemEase: number
   /** Сколько вычесть из ½Дпр(ч) при построении оката, mm (в книге 0,5–1,5 см). */
   capReduce: number
+  /** Поправка ГОСТ Ог3 → Ог Мюллера, % от Ог3. */
+  bustShift: number
+  /** 1 — глубина проймы по формуле от Ог, 0 — по мерке Впрз + 2,5 см. */
+  depthFromBust: number
+  /** Вариант расчёта Шпр и Шг: 1 или 2 (альтернативный). */
+  widthVariant: number
+}
+
+/** Müller's auxiliary features of the typical figure from Ог (mm), see the table above. */
+export function mullerFeatures(Og: number, Dsp: number, variant: number) {
+  const cm = Og / 10
+  const Gpr = Og / 10 + (cm < 83 ? 120 : cm <= 116.5 ? 110 : 105)
+  const Vg = Og / 4 + (cm < 95.5 ? 60 : cm < 116 ? 50 : 40)
+  const over = (Og - 1000) / 10
+  const Dtp =
+    Dsp +
+    (cm <= 90.5 ? 40 : cm <= 100.5 ? 45 : cm <= 110.5 ? 45 + over : cm <= 120.5 ? 50 + over : cm <= 130.5 ? 55 + over : 60 + over)
+  const [dShpr, dShg] =
+    variant === 1
+      ? cm <= 100.5 ? [-15, -40] : cm <= 110.5 ? [-10, -45] : [-5, -50]
+      : cm < 83 ? [-15, -40] : cm <= 116.5 ? [-5, -50] : [5, -60]
+  return { Gpr, Vg, Dtp, Dgs: Og / 20 + 20, Shs: Og / 8 + 55, Shpr: Og / 8 + dShpr, Shg: Og / 4 + dShg }
 }
 
 const EASE: Record<Silhouette, Pick<MullerDressOptions, 'backEase' | 'armholeEase' | 'chestEase' | 'waistEase' | 'hipEase' | 'depthEase'>> = {
@@ -99,8 +136,20 @@ export const mullerDress: BlockDef<MullerDressOptions> = {
       id: 'capReduce', title: 'Уменьшение оката', min: 5, max: 30, step: 1,
       hint: 'От переднего знака до верха оката откладывают ½ длины проймы минус 0,5–1,5 см. Больше вычет — меньше посадка оката.',
     },
+    {
+      id: 'bustShift', title: 'Поправка обхвата груди, %', min: 0, max: 3, step: 0.1,
+      hint: 'Мюллер измеряет Ог через нижние углы лопаток: на 1–2 см больше Ог3 по ГОСТ, у больших размеров больше. 0 — если Ог снят по Мюллеру.',
+    },
+    {
+      id: 'depthFromBust', title: 'Глубина проймы от Ог (1) или по мерке (0)', min: 0, max: 1, step: 1,
+      hint: 'По книге Гпр считают от Ог. Мерка Впрз по ГОСТ снята иначе, чем у Мюллера, поэтому по мерке берём Впрз + 2,5 см.',
+    },
+    {
+      id: 'widthVariant', title: 'Вариант расчёта Шпр и Шг', min: 1, max: 2, step: 1,
+      hint: 'Вариант 2 даёт пройму на 1 см шире и грудь на 1 см уже. Пример книги (размер 48) — вариант 2.',
+    },
   ],
-  defaults: (s) => ({ ...EASE[s], bladeDart: 12, sleeveHemEase: 75, capReduce: 10 }),
+  defaults: (s) => ({ ...EASE[s], bladeDart: 12, sleeveHemEase: 75, capReduce: 10, bustShift: 1.5, depthFromBust: 1, widthVariant: 2 }),
   draft: draftMullerDress,
 }
 
@@ -163,23 +212,30 @@ function offset3(a: Vec, b: Vec, c: Vec, d: number, side: Vec): [Vec, Vec, Vec] 
   return [add(a, n1), j, add(c, n2)]
 }
 
+const fmtPct = (x: number) => String(Math.round(x * 10) / 10).replace('.', ',')
+
 export function draftMullerDress(m: M, o: MullerDressOptions): BlockResult {
   const steps: CalcStep[] = []
   const c = calc(steps)
   const warnings: string[] = []
-  const Og = m.bust
+  const Og = c('Ог', 'Обхват груди по Мюллеру', `Ог3 + ${fmtPct(o.bustShift)} %`, Math.round(m.bust * (1 + o.bustShift / 100)))
 
-  // Auxiliary features of the typical figure (table p. 49).
-  const Gpr = c('Гпр', 'Глубина проймы', 'Впрз + 2,5', m.armholeDepth + 25)
+  // Auxiliary features of the typical figure (table p. 49 and the forum table).
   const Dsp = c('Дсп', 'Длина спины', 'мерка', m.backLength)
+  const f = mullerFeatures(Og, Dsp, o.widthVariant === 1 ? 1 : 2)
+  const cm = (x: number) => fmtPct(x / 10)
+  const Gpr = o.depthFromBust
+    ? c('Гпр', 'Глубина проймы', `1/10·Ог + ${cm(f.Gpr - Og / 10)}`, f.Gpr)
+    : c('Гпр', 'Глубина проймы', 'Впрз + 2,5', m.armholeDepth + 25)
   const Vb = c('Вб', 'Высота бёдер от 7-го позвонка', 'Дсп + Дтб', m.backLength + m.waistToHips)
   const Di = c('Ди', 'Длина изделия от 7-го позвонка', 'Дсп + Ди сбоку', m.backLength + m.skirtLength)
-  const Dgs = c('Дгс', 'Ширина горловины спинки', '1/10·½Ог + 2', 0.05 * Og + 20)
-  const Vg = c('Вг II', 'Высота груди', '¼Ог + 5', 0.25 * Og + 50)
-  const Dtp = c('Дтп II', 'Длина переда по линии вытачки', 'Дсп + 4,5 + (Ог − 100)/10', Dsp + 45 + (Og - 1000) / 10)
-  const Shs = c('Шс', 'Ширина спины с прибавкой', '⅛Ог + 5,5 + П', Og / 8 + 55 + o.backEase)
-  const Shpr = c('Шпр', 'Ширина проймы с прибавкой', '⅛Ог − 0,5 + П', Og / 8 - 5 + o.armholeEase)
-  const Shg = c('Шг', 'Ширина груди с прибавкой', '¼Ог − 5 + П', Og / 4 - 50 + o.chestEase)
+  const Dgs = c('Дгс', 'Ширина горловины спинки', '1/20·Ог + 2', f.Dgs)
+  const Vg = c('Вг II', 'Высота груди', `¼Ог + ${cm(f.Vg - Og / 4)}`, f.Vg)
+  const Dtp = c('Дтп II', 'Длина переда по линии вытачки', 'Дсп + по таблице от Ог', f.Dtp)
+  const sign = (x: number) => (x < 0 ? `− ${cm(-x)}` : `+ ${cm(x)}`)
+  const Shs = c('Шс', 'Ширина спины с прибавкой', '⅛Ог + 5,5 + П', f.Shs + o.backEase)
+  const Shpr = c('Шпр', 'Ширина проймы с прибавкой', `⅛Ог ${sign(f.Shpr - Og / 8)} + П`, f.Shpr + o.armholeEase)
+  const Shg = c('Шг', 'Ширина груди с прибавкой', `¼Ог ${sign(f.Shg - Og / 4)} + П`, f.Shg + o.chestEase)
   const yChest = c('1–2', 'Линия груди', 'Гпр + 1', Gpr + o.depthEase)
 
   // Grid
@@ -278,7 +334,7 @@ export function draftMullerDress(m: M, o: MullerDressOptions): BlockResult {
   if (e < 0) warnings.push('Талия с прибавкой шире, чем позволяет чертёж: вытачки по талии не нужны.')
   if (backDart > 45) warnings.push(`Вытачка по талии спинки ${fmt(backDart)} шире 3,5 см: проверьте мерки талии и бёдер.`)
   if (frontDart > 40) warnings.push(`Вытачка по талии переда ${fmt(frontDart)} шире 4 см: проверьте мерки.`)
-  if (Og < 840 || Og > 1240) warnings.push('Формулы книги даны для типовых фигур с Ог 100–116 см; при другом обхвате проверьте основу на макете.')
+  if (Og < 800 || Og > 1460) warnings.push('Таблица Мюллера дана для Ог 80–146 см; при другом обхвате проверьте основу на макете.')
 
   const yW = Dsp
   const backWaistSide = v(x11 - side / 2, yW - 10)
@@ -498,7 +554,7 @@ export function draftMullerDress(m: M, o: MullerDressOptions): BlockResult {
     },
     steps: [...steps, { id: 'Ae', title: 'Задний знак: от бока по пройме', formula: '|11–21|', value: backNotchLen }],
     checks: [
-      check('shoulder', 'Плечо спинки длиннее плеча полочки на посадку 0,5–1 см', shoulderBackSeam, shoulderFrontSeam, 7.5, 5),
+      check('shoulder', 'Плечо спинки длиннее плеча полочки на посадку 0,5–1 см', shoulderBackSeam, shoulderFrontSeam, 7.5, 5.5),
       check('side', 'Боковые срезы: спинка и полочка', sideBack, sideFront, 0, 3),
       check('cap', 'Окат длиннее проймы на посадку (2–8 см)', cap - armhole, 0, 50, 32),
       check('sleeveSeam', 'Шов рукава: два среза (без локтевой вытачки)', seamFront, seamBack, 0, 8),
