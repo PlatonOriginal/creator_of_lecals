@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { draftMullerDress, mullerDress } from './dress'
+import { draftMullerDress, mullerDress, mullerFeatures } from './dress'
 import { GOST_FIGURES, SAMPLE_MEASUREMENTS, typicalFigure } from '../../measurements'
 
 const step = (r: ReturnType<typeof draftMullerDress>, id: string) => {
@@ -17,9 +17,11 @@ const BOOK = {
   bust: 1100, waist: 945, hips: 1140, backLength: 420, armholeDepth: 195,
   waistToHips: 220, skirtLength: 640, armLength: 614, wrist: 165,
 }
+/** The book's Ог is Müller's own, so no ГОСТ → Müller shift. */
+const BOOK_OPTS = { ...mullerDress.defaults('fitted'), bustShift: 0 }
 
 describe('Платье Мюллера: пример книги, размер 48', () => {
-  const r = draftMullerDress(BOOK, mullerDress.defaults('fitted'))
+  const r = draftMullerDress(BOOK, BOOK_OPTS)
 
   it('вспомогательные признаки и ширины как в таблице книги', () => {
     const table: Record<string, number> = {
@@ -73,5 +75,32 @@ describe('Платье Мюллера: другие фигуры', () => {
         for (const ch of r.checks) expect(ch.ok, `${f.label} ${s}: ${ch.title} ${ch.a.toFixed(1)} / ${ch.b.toFixed(1)}`).toBe(true)
       }
     }
+  })
+})
+
+describe('Платье Мюллера: таблица признаков по Ог (форум Club Sezon)', () => {
+  it('ступенчатые формулы на границах диапазонов', () => {
+    // Ог 88: Гпр 8,8 + 11, Вг II 22 + 6, Дтп II Дсп + 4, Шпр/Шг вариант 1: 11 − 1,5 и 22 − 4.
+    expect(mullerFeatures(880, 400, 1)).toMatchObject({ Gpr: 198, Vg: 280, Dtp: 440, Shpr: 95, Shg: 180 })
+    // Ог 96: Вг II уже 24 + 5, Дтп II + 4,5 (без поправки на (Ог − 100)/10).
+    expect(mullerFeatures(960, 400, 1)).toMatchObject({ Vg: 290, Dtp: 445 })
+    // Ог 120: Гпр 12 + 10,5; Вг II 30 + 4; Дтп II + 5 + 2; вариант 2: 15 + 0,5 и 30 − 6.
+    expect(mullerFeatures(1200, 400, 2)).toMatchObject({ Gpr: 225, Vg: 340, Dtp: 470, Shpr: 155, Shg: 240 })
+    // Ог 110, вариант 1 и 2 дают одну сумму Шпр + Шг.
+    const a = mullerFeatures(1100, 420, 1)
+    const b = mullerFeatures(1100, 420, 2)
+    expect(a.Shpr + a.Shg).toBeCloseTo(b.Shpr + b.Shg, 6)
+    expect(b.Shpr - a.Shpr).toBeCloseTo(5, 6)
+  })
+
+  it('переводит Ог3 по ГОСТ в Ог Мюллера (+1–2 см) и по умолчанию берёт Гпр от Ог', () => {
+    const o = mullerDress.defaults('semi')
+    const r = draftMullerDress({ ...BOOK, bust: 880 }, o)
+    expect(step(r, 'Ог')).toBe(893)
+    expect(step(r, 'Гпр')).toBeCloseTo(89.3 + 110, 6)
+    const big = draftMullerDress({ ...BOOK, bust: 1200 }, o)
+    expect(step(big, 'Ог')).toBe(1218)
+    const byMeasure = draftMullerDress(BOOK, { ...o, depthFromBust: 0 })
+    expect(step(byMeasure, 'Гпр')).toBe(220)
   })
 })
