@@ -13,6 +13,7 @@ import {
   validateMeasurements,
   type BlockDef,
   type MeasurementId,
+  type MethodId,
   type Measurements,
   type ModelSpec,
   type Silhouette,
@@ -143,7 +144,26 @@ export function PatternPage({
         </label>
         {model.baseName && <p className="hint">Построена на модели «{model.baseName}»: её приёмы уже применены, ниже — свои.</p>}
         <label className="field">
-          <span>Изделие и методика</span>
+          <span>Методика</span>
+          <select
+            value={block.method}
+            disabled={model.layers.length > 1}
+            onChange={(e) => {
+              const method = e.target.value as MethodId
+              // The same garment by the other method keeps the modelling steps.
+              const next = BLOCKS.find((b) => b.method === method && b.garment === block.garment) ?? BLOCKS.find((b) => b.method === method)!
+              setModel({ ...model, block: next.id, options: {}, ...(garmentChanges(next.id) ? { layers: [{}] } : {}) })
+            }}
+          >
+            {(Object.keys(METHODS) as MethodId[]).map((m) => (
+              <option key={m} value={m}>
+                {METHODS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Изделие</span>
           <select
             value={block.id}
             disabled={model.layers.length > 1}
@@ -151,9 +171,9 @@ export function PatternPage({
               setModel({ ...model, block: e.target.value, options: {}, ...(garmentChanges(e.target.value) ? { layers: [{}] } : {}) })
             }
           >
-            {BLOCKS.map((b) => (
+            {BLOCKS.filter((b) => b.method === block.method).map((b) => (
               <option key={b.id} value={b.id}>
-                {b.title} · {METHODS[b.method]}
+                {b.title}
               </option>
             ))}
           </select>
