@@ -45,7 +45,19 @@ export interface ShellBand {
   labelAt: V3
 }
 
+/** The skirt part of the shell as a grid, for the cloth experiment (cloth.ts). */
+export interface ClothGrid {
+  rows: number
+  cols: number
+  /** Rows from the top that stay fixed (down to the hip line). */
+  pinned: number
+  /** Body under each row: centre [x, z] and radius at each of the `cols` angles (same angles as the cloth), metres. */
+  body: { y: number; c: [number, number]; r: Float32Array }[]
+}
+
 export interface Shell {
+  /** The torso/skirt rings come first: rows × cols vertices, row by row. */
+  grid?: ClothGrid
   positions: Float32Array
   colors: Float32Array
   indices: Uint32Array
@@ -192,7 +204,7 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
     const r = bodyRing(y, legs)
     if (!r) return undefined
     const { pts, body } = inflate(r, girthMm / 1000)
-    return { pts, ease: girthMm - body * 1000 }
+    return { pts, ease: girthMm - body * 1000, ring: r }
   }
   const to3 = (pts: Float64Array, y: number, mirror = false): V3[] => {
     const out: V3[] = []
@@ -235,14 +247,23 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
     return best
   }
   const torsoRings: number[][] = []
+  const gridBody: ClothGrid['body'] = []
+  let pinned = 0
   let lastTorso: V3[] = []
   for (const y of ys) {
-    const r = ringAt(y, girth(dyOf(y)), 'both')
+    // Trousers between the hips and the crotch: the pattern there includes the
+    // crotch extensions, which go between the legs, not round the body.
+    const dy = dyOf(y)
+    const r = ringAt(y, trousers && g.levels.hip !== undefined && dy > g.levels.hip ? girth(g.levels.hip) : girth(dy), 'both')
     if (!r) continue
     // Above the bust line the cut runs into the arms: colour as at the bust.
     const c = g.garment === 'dress' && y > L.levels.bust ? opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)) : opt.color(r.ease)
     lastTorso = to3(r.pts, y)
     torsoRings.push(lastTorso.map((p) => b.add(p, c)))
+    if (y >= L.levels.hips) pinned++
+    const rad = new Float32Array(RING)
+    for (let i = 0; i < RING; i++) rad[i] = Math.hypot(r.ring.pts[2 * i]! - r.ring.c[0], r.ring.pts[2 * i + 1]! - r.ring.c[1])
+    gridBody.push({ y, c: r.ring.c, r: rad })
   }
   b.loft(torsoRings)
   if (!trousers && lastTorso.length) edges.push(lastTorso)
@@ -298,7 +319,10 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
     if (g.levels.knee !== undefined) band('knee', toY(g.levels.knee), g.legGirthAt!(g.levels.knee), 'left')
   }
 
+  const grid: ClothGrid | undefined =
+    !trousers && torsoRings.length - pinned >= 3 ? { rows: torsoRings.length, cols: RING, pinned: Math.max(1, pinned), body: gridBody } : undefined
   return {
+    ...(grid ? { grid } : {}),
     positions: Float32Array.from(b.pos),
     colors: Float32Array.from(b.col),
     indices: Uint32Array.from(b.idx),

@@ -48,6 +48,8 @@ export interface BodyViewer {
   updatePositions(positions: Float32Array): void
   /** The translucent garment shell, or null to remove it. */
   setShell(shell: ViewerShell | null): void
+  /** New positions for the current shell (same vertices), e.g. from a cloth simulation; the hem lines show only on the original shape. */
+  updateShell(positions: Float32Array, original?: boolean): void
   setShellVisible(visible: boolean): void
   /** Lines round the body (girth lines, the bands of the ease map) with labels. */
   setBands(bands: ViewerBand[]): void
@@ -201,7 +203,7 @@ export function createBodyViewer(canvas: HTMLCanvasElement): BodyViewer {
       clear(shellGroup)
       if (!shell) return
       const g = new BufferGeometry()
-      g.setAttribute('position', new BufferAttribute(shell.positions, 3))
+      g.setAttribute('position', new BufferAttribute(shell.positions.slice(), 3))
       g.setAttribute('color', new BufferAttribute(shell.colors, 3))
       g.setIndex(new BufferAttribute(shell.indices, 1))
       g.computeVertexNormals()
@@ -222,6 +224,16 @@ export function createBodyViewer(canvas: HTMLCanvasElement): BodyViewer {
         const lg = new BufferGeometry().setFromPoints([...e, e[0]!].map((p) => new Vector3(...p)))
         shellGroup.add(new Line(lg, new LineBasicMaterial({ color: 0x333333 })))
       }
+    },
+    updateShell(positions, original = false) {
+      const sm = shellGroup.children.find((c): c is Mesh => c instanceof Mesh)
+      if (!sm) return
+      for (const c of shellGroup.children) if (c instanceof Line) c.visible = original
+      const attr = sm.geometry.getAttribute('position') as BufferAttribute
+      ;(attr.array as Float32Array).set(positions)
+      attr.needsUpdate = true
+      sm.geometry.computeVertexNormals()
+      sm.geometry.computeBoundingSphere()
     },
     setShellVisible(visible) {
       shellGroup.visible = visible

@@ -9,7 +9,10 @@ import {
   type Landmarks,
   type LocalChanges,
   type Phenotypes,
+  type ClothStats,
+  type Shell,
   FEMALE_BASE,
+  SkirtCloth,
   FIT_LOCAL,
   bodyLandmarks,
   bodyRegions,
@@ -125,6 +128,9 @@ export function BodyPage({
   const [showModel, setShowModel] = useState(true)
   const [showShell, setShowShell] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
+  const shellRef = useRef<Shell | null>(null)
+  const [cloth, setCloth] = useState(false)
+  const [clothStats, setClothStats] = useState<ClothStats | null>(null)
   const target = fitTarget(figure)
   // Refit only once typing has paused: a fit takes a second or more on a phone.
   const targetKey = useDebounced(JSON.stringify(target ?? null), 800)
@@ -193,23 +199,53 @@ export function BodyPage({
     return () => clearTimeout(timer)
   }, [phen, local, scale, loaded])
 
-  // Fit the mannequin to the measurements once the body is loaded and whenever they change.
+  // Fit the mannequin to the measurements once the body is loaded and whenever
+  // they change, in a worker (a few seconds on a phone); on the main thread
+  // if workers are not available.
+  const workerRef = useRef<Worker | null>(null)
+  useEffect(() => {
+    try {
+      workerRef.current = new Worker(new URL('./fitWorker.ts', import.meta.url), { type: 'module' })
+    } catch {
+      workerRef.current = null
+    }
+    return () => workerRef.current?.terminate()
+  }, [])
   useEffect(() => {
     const body = bodyRef.current
     if (!loaded || !body) return
     const t = JSON.parse(targetKey) as FitTarget | null
     if (!t) return
     setFitting(true)
-    // Let the «Подбираю…» overlay paint before the fit blocks the main thread.
-    const timer = setTimeout(() => {
-      const r = fitBody(body, t)
+    let cancelled = false
+    const apply = (r: FitResult) => {
+      if (cancelled) return
       setPhen(r.phenotypes)
       setLocal(r.local)
       setScale(r.scale)
       setFit(r)
       setFitting(false)
-    }, 30)
-    return () => clearTimeout(timer)
+    }
+    const worker = workerRef.current
+    const id = Math.random()
+    let timer = 0
+    const onMessage = (e: MessageEvent<{ id: number; result?: FitResult; error?: string }>) => {
+      if (e.data.id !== id) return
+      if (e.data.result) apply(e.data.result)
+      else apply(fitBody(body, t))
+    }
+    if (worker) {
+      worker.addEventListener('message', onMessage)
+      worker.postMessage({ id, baseUrl: new URL('./body/', document.baseURI).href, target: t })
+    } else {
+      // Let the «Подбираю…» overlay paint before the fit blocks the main thread.
+      timer = window.setTimeout(() => apply(fitBody(body, t)), 30)
+    }
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      worker?.removeEventListener('message', onMessage)
+    }
   }, [loaded, targetKey, refit])
 
   // The model on the mannequin: rings of the pattern, the ease map and the shell.
@@ -227,7 +263,9 @@ export function BodyPage({
     const body = bodyRef.current
     const v = bufRef.current
     if (!viewer || !body || !v || !landmarks) return
+    setCloth(false)
     if (!drafted) {
+      shellRef.current = null
       viewer.setShell(null)
       // Without a model: the girth lines of the body.
       const lines: [keyof Landmarks['rings'], string][] = [
@@ -245,6 +283,7 @@ export function BodyPage({
       return
     }
     const shell = garmentShell({ vertices: v, faces: body.faces }, landmarks, drafted.profile, { color: easeColor })
+    shellRef.current = shell
     viewer.setShell(shell)
     const bands: ViewerBand[] = []
     for (const b of shell.bands) {
@@ -256,6 +295,28 @@ export function BodyPage({
   }, [landmarks, drafted, levels])
 
   useEffect(() => viewerRef.current?.setShellVisible(showShell), [showShell])
+
+  // Cloth experiment: the skirt part of the shell falls under gravity, one step a frame, for 5 s.
+  useEffect(() => {
+    const viewer = viewerRef.current
+    const shell = shellRef.current
+    if (!viewer || !shell) return
+    if (!cloth || !shell.grid) {
+      viewer.updateShell(shell.positions, true)
+      return
+    }
+    const sim = new SkirtCloth(shell.positions.slice(), shell.grid)
+    let raf = 0
+    let n = 0
+    const tick = () => {
+      sim.step()
+      viewer.updateShell(sim.pos)
+      if (++n % 30 === 0) setClothStats(sim.stats())
+      if (n < 300) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [cloth])
   useEffect(() => viewerRef.current?.setLabelsVisible(showLabels), [showLabels])
 
   function manual(update: () => void) {
@@ -318,6 +379,19 @@ export function BodyPage({
           setShowLabels={setShowLabels}
           levels={levels}
         />
+        {showModel && drafted && (
+          <div className="toggles">
+            <label>
+              <input type="checkbox" checked={cloth} disabled={!shellRef.current?.grid} onChange={(e) => setCloth(e.target.checked)} />{' '}
+              Ткань (эксперимент)
+            </label>
+            {cloth && clothStats && (
+              <span className="hint">
+                {clothStats.particles} точек, шаг {clothStats.stepMs.toFixed(1)} мс
+              </span>
+            )}
+          </div>
+        )}
         <h2>Мерки и манекен</h2>
         <table className="fit">
           <thead>

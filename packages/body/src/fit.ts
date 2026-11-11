@@ -167,6 +167,8 @@ export function fitBody(body: AnnyBody, target: FitTarget, base: Phenotypes = FE
           if (Math.abs(e1) < Math.abs(best.e)) best = { x: x1, e: e1 }
           // Secant step, at most 0.5 at a time: the response is far from linear.
           const step = Math.max(-0.5, Math.min(0.5, (-e1 * (x1 - x0)) / (e1 - e0)))
+          // Pinned at a bound and still pushing past it: nothing more to gain.
+          if (clampP(x1 + step) === x1) break
           x0 = x1
           e0 = e1
           x1 = clampP(x1 + step)
@@ -205,8 +207,11 @@ function makeProbe(k: FitKey, mesh: MeshLike, regions: BodyRegions): (m: MeshLik
   switch (k) {
     case 'bust':
     case 'waist':
-    case 'hips':
-      return (m) => torsoGirth(m, findLevels(m)[k]) * 1000
+    case 'hips': {
+      // The line found at the start of the step: a local change hardly moves it.
+      const y = levels[k]
+      return (m) => torsoGirth(m, y) * 1000
+    }
     case 'underbust': {
       const L = bodyLandmarks(mesh, regions)
       const y = L.rings.underbust.centre[1]
