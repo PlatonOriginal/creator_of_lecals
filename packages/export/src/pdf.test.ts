@@ -8,7 +8,8 @@ import { pieceToSvg } from './svg'
 
 const require = createRequire(import.meta.url)
 const fontBytes = readFileSync(require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf'))
-const piece = draftTestPanel(SAMPLE_MEASUREMENTS)
+// Fixed numbers: the layout below sits exactly on a tile boundary, so it must not follow the typical-figure tables.
+const piece = draftTestPanel({ ...SAMPLE_MEASUREMENTS, waist: 700, hips: 960, waistToHips: 190, skirtLength: 600 })
 
 describe('piecesToPdf', () => {
   it('tiles the test panel onto A4 pages of the right size', async () => {

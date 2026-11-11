@@ -47,9 +47,35 @@ describe('typical figure', () => {
     const bigger = typicalFigure({ height: 1640, bust: 960, hips: 1040 })
     expect(taller.backLength).toBeGreaterThan(base.backLength)
     expect(taller.waistToFloor - base.waistToFloor).toBeGreaterThanOrEqual(30)
-    expect(taller.waist).toBe(base.waist)
+    // ОСТ 17-326-81: a taller figure of the same size has a slightly smaller waist.
+    expect(taller.waist).toBe(base.waist - 12)
     expect(bigger.waist).toBeGreaterThan(base.waist + 60)
     expect(bigger.backLength - base.backLength).toBeLessThan(10)
+  })
+
+  it('repeats the tables of ОСТ 17-326-81 on its own figures', () => {
+    // 164-88-96, second fullness group (table 6).
+    expect(typicalFigure({ height: 1640, bust: 880, hips: 960 })).toMatchObject({
+      waist: 676, bustUpper: 858, bustFull: 928, underbust: 764, neck: 354, shoulderLength: 131,
+      backWidth: 346, chestWidth: 330, bustSpan: 192, backLength: 401, armholeDepth: 175, armholeArc: 304,
+      torsoArc: 859, armDepth: 100, upperArm: 275, wrist: 159, armLength: 552, elbowLength: 316,
+      crotchDepth: 272, waistToKnee: 582, waistToFloor: 1057, waistToFloorBack: 1028, waistToFloorFront: 1036,
+      glutealFoldHeight: 738, inseam: 769, instep: 314, thigh: 546, knee: 353, calf: 342, ankle: 221,
+    })
+    // 158-96-100, first group (table 4); 164-112-124, third group (table 10); 164-132-140, second group (table 8).
+    expect(typicalFigure({ height: 1580, bust: 960, hips: 1000 })).toMatchObject({ waist: 752, backLength: 393, thigh: 561 })
+    expect(typicalFigure({ height: 1640, bust: 1120, hips: 1240 })).toMatchObject({ waist: 954, backLength: 406, thigh: 664, upperArm: 358 })
+    expect(typicalFigure({ height: 1640, bust: 1320, hips: 1400 })).toMatchObject({ waist: 1196, neck: 434, backWidth: 450, waistToFloor: 1069 })
+  })
+
+  it('interpolates between the fullness groups and the bust bands of the tables', () => {
+    const v = (bust: number, hips: number) => typicalFigure({ height: 1580, bust, hips }).waist
+    expect(v(880, 940)).toBe((v(880, 920) + v(880, 960)) / 2)
+    // Between Ог3 104 (table 6) and 108 (table 7).
+    expect(v(1060, 1140)).toBe((v(1040, 1120) + v(1080, 1160)) / 2)
+    // ГОСТ 31396-2009 has groups beyond the old standard: the trend continues.
+    expect(v(880, 860)).toBeLessThan(v(880, 920))
+    expect(v(880, 1060)).toBeGreaterThan(v(880, 1040))
   })
 
   it('prefill keeps entered values and fills the rest', () => {
