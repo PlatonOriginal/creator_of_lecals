@@ -3,7 +3,7 @@ import { BLOCKS } from '../blocks'
 import { GOST_FIGURES, SAMPLE_MEASUREMENTS, typicalFigure } from '../measurements'
 import { angleBetween, dist, sub, type Vec } from '../draft/geom'
 import { edgeLengths, outlineOf, type Panel } from './panel'
-import { applyLayers, applyModel, type ModelSpec } from './model'
+import { applyLayers, applyModel, sweep, type ModelSpec } from './model'
 import { changeLength, hemY, positionOn, transferDart } from './ops'
 import { cutLine, DEFAULT_ALLOWANCES } from './allowance'
 
@@ -131,6 +131,31 @@ describe('длина и клёш', () => {
           }
         }
       }
+    }
+  })
+
+  it('клёш больше «солнца»: половины юбки делятся на клинья с предупреждением', () => {
+    for (const id of ['emko-skirt', 'muller-skirt']) {
+      const b = byId(id)
+      const r = b.draft(SAMPLE_MEASUREMENTS, b.defaults('straight'))
+      for (const slashes of [1200, 3550]) {
+        const res = applyModel(b, r, { flare: { darts: 0.1, side: 20, princess: 0, slashes } }, SAMPLE_MEASUREMENTS)
+        expect(res.panels.length, `${id} ${slashes}`).toBeGreaterThan(r.panels.length)
+        expect(res.warnings.some((w) => w.includes('«солнца»'))).toBe(true)
+        for (const p of res.panels) {
+          expect(sweep(p), `${id} ${slashes} ${p.id}`).toBeLessThanOrEqual(91)
+          expect(selfCrossings(p), `${id} ${slashes} ${p.id}`).toBe(0)
+          expect(p.edges.some((e) => e.id === 'gore')).toBe(true)
+        }
+        // Each half grows by about the amount asked (more: the darts go into the hem too).
+        const hem = res.panels.reduce((a, p) => a + edgeLengths(p).hem!, 0)
+        const hem0 = r.panels.reduce((a, p) => a + edgeLengths(p).hem!, 0)
+        expect(hem - hem0).toBeGreaterThan(2 * slashes * 0.95)
+      }
+      // Up to a full sun the halves stay whole.
+      const sun = applyModel(b, r, { flare: { darts: 0, side: 0, princess: 0, slashes: 800 } }, SAMPLE_MEASUREMENTS)
+      expect(sun.panels).toHaveLength(r.panels.length)
+      expect(sun.warnings).toHaveLength(0)
     }
   })
 

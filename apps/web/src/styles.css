@@ -126,6 +126,19 @@ button {
   justify-content: center;
 }
 .preview svg { width: 100%; height: auto; max-height: 70vh; }
+.preview.zoom { flex-direction: column; justify-content: flex-start; gap: 8px; min-width: 0; }
+.zoom-tools { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.zoom-tools button { min-width: 36px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+.zoom-tools button.secondary { color: var(--accent); }
+.zoom-tools button:disabled { opacity: 0.4; cursor: default; }
+.zoom-tools .num { min-width: 52px; text-align: center; font-size: 13px; color: var(--muted); }
+.zoom-box { overflow: hidden; touch-action: pan-y; cursor: zoom-in; height: min(70vh, 760px); min-height: 260px; }
+.zoom-box.zoomed { touch-action: none; cursor: grab; }
+.zoom-box.zoomed:active { cursor: grabbing; }
+.zoom-content { transform-origin: 0 0; width: 100%; height: 100%; }
+.zoom-content svg { width: 100%; height: 100%; max-height: none; display: block; }
+.zoom-hint { margin: 0; font-size: 12px; }
+.errors.banner { margin: 0; }
 
 .viewport {
   position: relative;
