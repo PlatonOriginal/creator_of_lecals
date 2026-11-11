@@ -1,6 +1,7 @@
 import type { Piece } from '../geometry'
 import type { MeasurementId, Measurements } from '../measurements'
 import type { Vec } from '../draft/geom'
+import type { Panel } from '../pattern/panel'
 
 export type MethodId = 'emko' | 'muller'
 
@@ -55,6 +56,9 @@ export interface SeamCheck {
 }
 
 export interface BlockResult {
+  /** Pieces with named edges: what the modelling steps work on. */
+  panels: Panel[]
+  /** The same pieces drawn as the net block (no allowances). */
   pieces: Piece[]
   /**
    * Control points in one coordinate frame, with names shared by all methods
@@ -66,9 +70,12 @@ export interface BlockResult {
   warnings: string[]
 }
 
+export type GarmentKind = 'skirt' | 'dress' | 'trousers'
+
 export interface BlockDef<O extends Record<string, number> = Record<string, number>> {
   id: string
   title: string
+  garment: GarmentKind
   method: MethodId
   /** Measurements the method needs; checked with validateMeasurements. */
   required: readonly MeasurementId[]

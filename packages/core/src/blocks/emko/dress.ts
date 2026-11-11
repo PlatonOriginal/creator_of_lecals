@@ -1,4 +1,5 @@
-import { Line, add, along, circlesX, dist, lineX, mid, mul, norm, rotate, sub, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, add, along, circlesX, dist, lineX, mid, mul, norm, rotate, sub, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type FishDart, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -74,6 +75,7 @@ export const emkoDress: BlockDef<EmkoDressOptions> = {
   id: 'emko-dress',
   title: 'Платье с втачным рукавом',
   method: 'emko',
+  garment: 'dress',
   required: EMKO_DRESS_REQUIRED,
   options: [
     { id: 'chestEase', short: 'Пг', title: 'Прибавка по груди (к полуобхвату)', min: 20, max: 100, step: 1 },
@@ -261,37 +263,47 @@ export function draftEmkoDress(m: M, o: EmkoDressOptions): BlockResult {
   const backNeck = new Line(P11).to(P112).smooth(v(1, 0), v(0.35, -1), P121)
   const backArmhole = new Line(P14r).smooth(rotate(sub(P14r, P122r), 90), v(0, 1), P332, 0.45)
   arc(backArmhole, P342, P332, P341)
-  const backOutline = new Line(P911)
+  const backEdges = new Outline(P911, 'cb')
     .to(P511)
     .to(P411)
     .to(v(0, y31))
     .to(P11)
+    .edge('neck')
     .append(backNeck)
+    .edge('shoulder')
     .to(P122)
-    .to(P22)
-    .to(P122r)
+    .dart('shoulder', P22, P122r, 'a')
     .to(P14r)
+    .edge('armhole')
     .append(backArmhole)
+    .edge('side')
     .to(P443)
     .to(P542b)
     .to(v(P542b.x, yHem))
-  const backDart = new Line(P321).to(v(P42.x - sB, y41)).to(P521).to(v(P42.x + sB, y41)).to(P321)
+    .edge('hem')
+    .close()
+  const backFish: FishDart = { id: 'waist', top: P321, left: v(P42.x - sB, y41), bottom: P521, right: v(P42.x + sB, y41) }
 
   // ---- Front outline ----
   const frontArmhole = arc(new Line(P341), P343, P341, P352).smooth(v(0, -1), rotate(sub(P14f, P16), 90), P14f, 0.45)
-  const frontOutline = new Line(v(P542f.x, yHem))
+  const frontEdges = new Outline(v(P542f.x, yHem), 'side')
     .to(P542f)
     .to(P443f)
     .to(P341)
+    .edge('armhole')
     .append(frontArmhole)
+    .edge('shoulder')
     .to(D2)
-    .to(P36)
-    .to(D1)
+    .dart('bust', P36, D1, 'b', 20)
     .to(Q16)
+    .edge('neck')
     .append(frontNeck.reversed())
+    .edge('cf', 'fold')
     .to(P47)
     .to(P97)
-  const frontDart = new Line(P36).to(v(P46.x - sF, y41)).to(P56).to(v(P46.x + sF, y41)).to(P36)
+    .edge('hem')
+    .close()
+  const frontFish: FishDart = { id: 'waist', top: P36, left: v(P46.x - sF, y41), bottom: P56, right: v(P46.x + sF, y41) }
 
   // ---- Measured seams ----
   const backArmLen = backArmhole.length()
@@ -366,78 +378,88 @@ export function draftEmkoDress(m: M, o: EmkoDressOptions): BlockResult {
   const E2 = along(E1, SL(yWr), elbowDart)
   const Etip = add(mid(E1, E2), v(Math.min(100, 0.3 * (SR(yE).x - E1.x)), 0))
   const seamL = seamLraw - elbowDart
-  const sleeveOutline = new Line(SL(yWr))
+  const sleeveEdges = new Outline(SL(yWr), 'seamBack')
     .to(E2)
-    .to(Etip)
-    .to(E1)
+    .dart('elbow', Etip, E1, 'a')
     .to(SL(VOR))
+    .edge('cap')
     .append(lowBack)
     .append(capTop)
     .append(lowFrontU)
+    .edge('seamFront')
     .to(SR(yE))
     .to(SR(yWr))
-    .to(SL(yWr))
+    .edge('hem')
+    .close()
   if (elbowDart > 40) warnings.push(`Вытачка на локоть ${fmt(elbowDart)}: проверьте длину рукава и обхват запястья.`)
 
   // ---- Pieces ----
-  const backPiece = toPiece({
+  const levels = { chest: y31, waist: y41, hip: y51 }
+  const backPanel: Panel = {
     id: 'emko-dress-back',
     title: 'Спинка',
-    outline: backOutline,
-    extra: [
-      { role: 'mark', line: backDart },
+    role: 'back',
+    method: 'ЕМКО СЭВ',
+    edges: backEdges,
+    fish: [backFish],
+    marks: [
       { role: 'mark', line: new Line(v(0, y41)).to(P443) },
       { role: 'mark', line: new Line(v(0, y51)).to(v(P542b.x, y51)) },
     ],
     grain: [v(P42.x, y51 + 40), v(P42.x, yHem - 60)],
-    labels: [
-      { at: v(12, y51 + 70), text: 'Спинка', size: 7 },
-      { at: v(12, y51 + 82), text: 'Крой 2 (шов посередине)' },
-      { at: v(12, y51 + 92), text: 'ЕМКО СЭВ · без припусков' },
+    cut: 'Крой 2 (шов посередине)',
+    labelAt: v(12, y51 + 70),
+    notes: [
       { at: v(12, y41 - 6), text: 'линия талии', size: 4 },
       { at: v(12, y51 - 6), text: 'линия бёдер', size: 4 },
     ],
+    levels,
+    notches: [],
     seams: { shoulder: shoulderBack, side: sideBack, armhole: backArmLen },
-  })
-  const frontPiece = toPiece({
+  }
+  const frontPanel: Panel = {
     id: 'emko-dress-front',
     title: 'Полочка',
-    outline: frontOutline,
-    extra: [
-      { role: 'mark', line: frontDart },
+    role: 'front',
+    method: 'ЕМКО СЭВ',
+    edges: frontEdges,
+    fish: [frontFish],
+    marks: [
       { role: 'mark', line: new Line(P443f).to(P47) },
       { role: 'mark', line: new Line(v(P542f.x, y51)).to(v(W, y51)) },
     ],
-    fold: [Q17, P97],
     grain: [v(P46.x - 60, y51 + 40), v(P46.x - 60, yHem - 60)],
-    labels: [
-      { at: v(xSide + 20, y51 + 70), text: 'Полочка', size: 7 },
-      { at: v(xSide + 20, y51 + 82), text: 'Крой 1 со сгибом' },
-      { at: v(xSide + 20, y51 + 92), text: 'ЕМКО СЭВ · без припусков' },
-    ],
+    cut: 'Крой 1 со сгибом',
+    labelAt: v(xSide + 20, y51 + 70),
+    notes: [],
+    levels,
+    notches: [],
     seams: { shoulder: shoulderFront, side: sideFront, armhole: frontArmLen },
-  })
-  const sleevePiece = toPiece({
+  }
+  const sleevePanel: Panel = {
     id: 'emko-dress-sleeve',
     title: 'Рукав',
-    outline: sleeveOutline,
-    extra: [
+    role: 'sleeve',
+    method: 'ЕМКО СЭВ',
+    edges: sleeveEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: new Line(S131).to(S333).to(L43).to(L931) },
       { role: 'mark', line: new Line(S355).to(S351).to(R451).to(R951) },
       { role: 'mark', line: new Line(Etip).to(SR(yE)) },
     ],
     grain: [v(S14.x, VOR + 40), v(S14.x, yWr - 60)],
-    labels: [
-      { at: v(S14.x - 40, VOR + 70), text: 'Рукав', size: 7 },
-      { at: v(S14.x - 40, VOR + 82), text: 'Крой 2 (зеркально)' },
-      { at: v(S14.x - 40, VOR + 92), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(S14.x - 40, yE - 6), text: 'линия локтя', size: 4 },
-    ],
+    cut: 'Крой 2 (зеркально)',
+    labelAt: v(S14.x - 40, VOR + 70),
+    notes: [{ at: v(S14.x - 40, yE - 6), text: 'линия локтя', size: 4 }],
+    levels: { chest: VOR, elbow: yE },
+    notches: [],
     seams: { cap, seam: seamL },
-  })
+  }
 
   return {
-    pieces: [backPiece, frontPiece, sleevePiece],
+    panels: [backPanel, frontPanel, sleevePanel],
+    pieces: [backPanel, frontPanel, sleevePanel].map(netPiece),
     points: {
       P11, P12, P121, P112, P13, P14, P14r, P122, P122r, P22, P32,
       P15, P331, P332, P341, P342, P343, P351, P352,

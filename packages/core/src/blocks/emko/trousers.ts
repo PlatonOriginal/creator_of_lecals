@@ -1,4 +1,5 @@
-import { Line, add, along, atY, circlesX, dist, mid, mul, norm, rotate, sub, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, add, along, atY, circlesX, dist, mid, mul, norm, rotate, sub, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -60,6 +61,7 @@ export const emkoTrousers: BlockDef<EmkoTrousersOptions> = {
   id: 'emko-trousers',
   title: 'Брюки',
   method: 'emko',
+  garment: 'trousers',
   required: EMKO_TROUSERS_REQUIRED,
   options: [
     { id: 'waistEase', short: 'Пт', title: 'Прибавка по талии (к полуобхвату)', min: 0, max: 40, step: 1 },
@@ -217,23 +219,25 @@ export function draftEmkoTrousers(m: M, o: EmkoTrousersOptions): BlockResult {
   const P941 = v(x52 + hemB, y94)
   const backCrotch = arc(new Line(P512), P582, P512, P681)
   const backSide = new Line(P442).smooth(sub(P54, P442), d.y < 0 ? mul(d, -1) : d, P54, 0.4)
-  const backOutline = new Line(P98)
+  const backEdges = new Outline(P98, 'inseam')
     .to(P78)
     .to(P681)
+    .edge('crotch')
     .append(backCrotch.reversed())
     .to(P511)
     .to(P411)
+    .edge('waist')
     .to(bd1.left)
-    .to(bd1.tip)
-    .to(bd1.right)
+    .dart('waist', bd1.tip, bd1.right, 'a')
     .to(bd2.left)
-    .to(bd2.tip)
-    .to(bd2.right)
+    .dart('waist2', bd2.tip, bd2.right, 'a')
     .to(P442)
+    .edge('side')
     .append(backSide)
     .to(P741)
     .to(P941)
-    .to(P98)
+    .edge('hem')
+    .close()
 
   // ---- Front outline ----
   const P78f = v(x56 + kneeF, y74)
@@ -248,18 +252,22 @@ export function draftEmkoTrousers(m: M, o: EmkoTrousersOptions): BlockResult {
   }
   const frontWaist1 = waistSeg(P442f, fd.left)
   const frontWaist2 = new Line(fd.right).append(waistSeg(fd.right, P460)).to(P471)
-  const frontOutline = new Line(P941f)
+  const frontEdges = new Outline(P941f, 'side')
     .to(P741f)
     .to(P54)
     .append(frontSide.reversed())
+    .edge('waist')
     .append(frontWaist1)
-    .to(fd.tip)
+    .dart('waist', fd.tip, fd.right, 'b')
     .append(frontWaist2)
+    .edge('crotch')
     .to(P57)
     .append(frontCrotch)
+    .edge('inseam')
     .to(P78f)
     .to(P98f)
-    .to(P941f)
+    .edge('hem')
+    .close()
 
   // ---- Checks ----
   const inseamB = dist(P681, P78) + dist(P78, P98)
@@ -270,46 +278,53 @@ export function draftEmkoTrousers(m: M, o: EmkoTrousersOptions): BlockResult {
   const waistF = frontWaist1.length() + frontWaist2.length()
   const waistTotal = 2 * (waistB + waistF)
 
-  const backPiece = toPiece({
+  const levels = { hip: y51, knee: y74 }
+  const backPanel: Panel = {
     id: 'emko-trousers-back',
     title: 'Задняя половина брюк',
-    outline: backOutline,
-    extra: [
+    role: 'trousersBack',
+    method: 'ЕМКО СЭВ',
+    edges: backEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: new Line(v(x52, y51)).to(v(x52, y94)) },
       { role: 'mark', line: new Line(P511).to(P54) },
       { role: 'mark', line: new Line(P681).to(atY(P54, P741, y64)) },
       { role: 'mark', line: new Line(P78).to(P741) },
     ],
     grain: [v(x52 + 15, y64 + 60), v(x52 + 15, y74 - 60)],
-    labels: [
-      { at: v(x52 - 70, y64 + 100), text: 'Задняя половина', size: 7 },
-      { at: v(x52 - 70, y64 + 112), text: 'Крой 2 (зеркально)' },
-      { at: v(x52 - 70, y64 + 122), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(x52 + 4, y94 - 70), text: 'стрелка', size: 4 },
-    ],
+    cut: 'Крой 2 (зеркально)',
+    labelAt: v(x52 - 70, y64 + 100),
+    notes: [{ at: v(x52 + 4, y94 - 70), text: 'стрелка', size: 4 }],
+    levels,
+    notches: [],
     seams: { inseam: inseamB, side: sideB, waist: waistB },
-  })
-  const frontPiece = toPiece({
+  }
+  const frontPanel: Panel = {
     id: 'emko-trousers-front',
     title: 'Передняя половина брюк',
-    outline: frontOutline,
-    extra: [
+    role: 'trousersFront',
+    method: 'ЕМКО СЭВ',
+    edges: frontEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: new Line(v(x56, y51)).to(v(x56, y94)) },
       { role: 'mark', line: new Line(P54).to(P57) },
       { role: 'mark', line: new Line(atY(P54, P741f, y64)).to(P68f) },
       { role: 'mark', line: new Line(P741f).to(P78f) },
     ],
     grain: [v(x56 - 15, y64 + 60), v(x56 - 15, y74 - 60)],
-    labels: [
-      { at: v(x56 - 60, y64 + 100), text: 'Передняя половина', size: 7 },
-      { at: v(x56 - 60, y64 + 112), text: 'Крой 2 (зеркально)' },
-      { at: v(x56 - 60, y64 + 122), text: 'ЕМКО СЭВ · без припусков' },
-    ],
+    cut: 'Крой 2 (зеркально)',
+    labelAt: v(x56 - 60, y64 + 100),
+    notes: [],
+    levels,
+    notches: [],
     seams: { inseam: inseamF, side: sideF2, waist: waistF },
-  })
+  }
 
   return {
-    pieces: [backPiece, frontPiece],
+    panels: [backPanel, frontPanel],
+    pieces: [backPanel, frontPanel].map(netPiece),
     points: {
       P41, P51, P54, P57, P47, P58, P58f, P68, P68f, P681, P742, P511, P411, P581, P441, P512, P582, P582f,
       P442, P471, P441f, P442f, P460, P78, P741, P98, P941, P78f, P741f, P98f, P941f,

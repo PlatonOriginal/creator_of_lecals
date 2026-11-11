@@ -1,4 +1,5 @@
-import { Line, along, dist, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, along, dist, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -64,6 +65,7 @@ export const emkoSkirt: BlockDef<EmkoSkirtOptions> = {
   id: 'emko-skirt',
   title: 'Прямая юбка',
   method: 'emko',
+  garment: 'skirt',
   required: EMKO_SKIRT_REQUIRED,
   options: [
     { id: 'waistEase', short: 'Пт', title: 'Прибавка по талии (к полуобхвату)', min: 0, max: 30, step: 1 },
@@ -154,62 +156,73 @@ export function draftEmkoSkirt(m: M, o: EmkoSkirtOptions): BlockResult {
   const waistFront1 = seg(P442f, front.left)
   const waistFront2 = new Line(front.right).append(seg(front.right, P460)).append(seg(P460, P47))
 
-  const backOutline = new Line(P91)
+  const backEdges = new Outline(P91, 'cb')
     .to(P51)
     .to(P41)
+    .edge('waist')
     .append(waistBack1)
-    .to(back.tip)
-    .to(back.right)
+    .dart('waist', back.tip, back.right, 'a')
     .append(waistBack2)
+    .edge('side')
     .to(P54)
     .to(P94)
-  const frontOutline = new Line(P94)
+    .edge('hem')
+    .close()
+  const frontEdges = new Outline(P94, 'side')
     .to(P54)
     .to(P442f)
+    .edge('waist')
     .append(waistFront1)
-    .to(front.tip)
-    .to(front.right)
+    .dart('waist', front.tip, front.right, 'b')
     .append(waistFront2)
+    .edge('cf', 'fold')
     .to(P97)
+    .edge('hem')
+    .close()
 
   const sideBackLen = dist(P442, P54) + (len - hip)
   const sideFrontLen = dist(P442f, P54) + (len - hip)
   const waistBack = waistBack1.length() + waistBack2.length()
   const waistFront = waistFront1.length() + waistFront2.length()
 
-  const backPiece = toPiece({
+  const levels = { hip }
+  const backPanel: Panel = {
     id: 'emko-skirt-back',
     title: 'Задняя половина юбки',
-    outline: backOutline,
-    extra: [{ role: 'mark', line: new Line(P51).to(P54) }],
+    role: 'skirtBack',
+    method: 'ЕМКО СЭВ',
+    edges: backEdges,
+    fish: [],
+    marks: [{ role: 'mark', line: new Line(P51).to(P54) }],
     grain: [v(half * 0.55, hip + 40), v(half * 0.55, len - 60)],
-    labels: [
-      { at: v(12, hip + 70), text: 'Задняя половина юбки', size: 7 },
-      { at: v(12, hip + 82), text: 'Крой 2 (шов посередине)' },
-      { at: v(12, hip + 92), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(12, hip - 6), text: 'линия бёдер', size: 4 },
-    ],
+    cut: 'Крой 2 (шов посередине)',
+    labelAt: v(12, hip + 70),
+    notes: [{ at: v(12, hip - 6), text: 'линия бёдер', size: 4 }],
+    levels,
+    notches: [],
     seams: { side: sideBackLen, waist: waistBack, hem: half, dart: 2 * dB },
-  })
-  const frontPiece = toPiece({
+  }
+  const frontPanel: Panel = {
     id: 'emko-skirt-front',
     title: 'Переднее полотнище юбки',
-    outline: frontOutline,
-    extra: [{ role: 'mark', line: new Line(P54).to(P57) }],
-    fold: [P47, P97],
+    role: 'skirtFront',
+    method: 'ЕМКО СЭВ',
+    edges: frontEdges,
+    fish: [],
+    marks: [{ role: 'mark', line: new Line(P54).to(P57) }],
     grain: [v(half + half * 0.45, hip + 40), v(half + half * 0.45, len - 60)],
-    labels: [
-      { at: v(half + 12, hip + 70), text: 'Переднее полотнище', size: 7 },
-      { at: v(half + 12, hip + 82), text: 'Крой 1 со сгибом' },
-      { at: v(half + 12, hip + 92), text: 'ЕМКО СЭВ · без припусков' },
-      { at: v(half + 12, hip - 6), text: 'линия бёдер', size: 4 },
-    ],
+    cut: 'Крой 1 со сгибом',
+    labelAt: v(half + 12, hip + 70),
+    notes: [{ at: v(half + 12, hip - 6), text: 'линия бёдер', size: 4 }],
+    levels,
+    notches: [],
     seams: { side: sideFrontLen, waist: waistFront, hem: W - half, dart: 2 * dF },
-  })
+  }
 
   const waistTotal = 2 * (waistBack + waistFront)
   return {
-    pieces: [backPiece, frontPiece],
+    panels: [backPanel, frontPanel],
+    pieces: [backPanel, frontPanel].map(netPiece),
     points: {
       waistCB: P41, hipCB: P51, hemCB: P91,
       waistCF: P47, hipCF: P57, hemCF: P97,

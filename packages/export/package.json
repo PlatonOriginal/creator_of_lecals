@@ -10,7 +10,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "make-test-pdf": "tsx scripts/make-test-pdf.ts"
+    "make-test-pdf": "tsx scripts/make-test-pdf.ts",
+    "preview-models": "tsx scripts/preview.ts"
   },
   "dependencies": {
     "@lecals/core": "workspace:*",

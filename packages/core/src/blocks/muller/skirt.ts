@@ -1,4 +1,5 @@
-import { Line, along, dist, norm, sub, through, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, along, dist, norm, sub, through, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -57,6 +58,7 @@ export const mullerSkirt: BlockDef<MullerSkirtOptions> = {
   id: 'muller-skirt',
   title: 'Прямая юбка',
   method: 'muller',
+  garment: 'skirt',
   required: MULLER_SKIRT_REQUIRED,
   options: [
     { id: 'waistEase', title: 'Прибавка по талии (к полуобхвату)', min: 0, max: 20, step: 1 },
@@ -158,64 +160,70 @@ export function draftMullerSkirt(m: M, o: MullerSkirtOptions): BlockResult {
   const backPts: Vec[] = [P1b]
   for (const k of backDarts) backPts.push(k.left, k.right)
   backPts.push(Pb)
-  let backOutline = new Line(P3b).to(P2b).to(P1b)
+  const backOut = new Outline(P3b, 'cb', 'fold').to(P2b).to(P1b).edge('waist')
   let waistBack = 0
   for (let i = 0; i < backPts.length; i += 2) {
     const a = backPts[i]!
     const b = backPts[i + 1]!
     const seg = through([a, b], LEVEL, b === Pb ? atBackSide : LEVEL)
     waistBack += seg.length()
-    backOutline = backOutline.append(seg)
+    backOut.append(seg)
     const k = backDarts[i / 2]
-    if (k && b === k.left) backOutline = backOutline.to(k.tip).to(k.right)
+    if (k && b === k.left) backOut.dart(i === 0 ? 'waist' : 'waist2', k.tip, k.right, 'a')
   }
-  backOutline = backOutline.append(sideBack).to(P7)
+  const backEdges = backOut.edge('side').append(sideBack).to(P7).edge('hem').close()
 
   const waistF1 = through([Pf, dF.left], atFrontSide, LEVEL)
   const waistF2 = through([dF.right, P1f], LEVEL, LEVEL)
   const waistFront = waistF1.length() + waistF2.length()
-  const frontOutline = new Line(P7)
+  const frontEdges = new Outline(P7, 'side')
     .to(P5)
     .append(sideFront.reversed())
+    .edge('waist')
     .append(waistF1)
-    .to(dF.tip)
-    .to(dF.right)
+    .dart('waist', dF.tip, dF.right, 'b')
     .append(waistF2)
+    .edge('cf', 'fold')
     .to(P3f)
+    .edge('hem')
+    .close()
 
   const sideBackLen = sideBack.length() + (len - hip)
   const sideFrontLen = sideFront.length() + (len - hip)
 
-  const backPiece = toPiece({
+  const levels = { hip }
+  const backPanel: Panel = {
     id: 'muller-skirt-back',
     title: 'Заднее полотнище юбки',
-    outline: backOutline,
-    extra: [{ role: 'mark', line: new Line(P2b).to(P5) }],
+    role: 'skirtBack',
+    method: 'Мюллер',
+    edges: backEdges,
+    fish: [],
+    marks: [{ role: 'mark', line: new Line(P2b).to(P5) }],
     grain: [v(half * 0.4, hip + 40), v(half * 0.4, len - 60)],
-    labels: [
-      { at: v(12, hip + 70), text: 'Заднее полотнище', size: 7 },
-      { at: v(12, hip + 82), text: 'Крой 1 со сгибом' },
-      { at: v(12, hip + 92), text: 'Мюллер · без припусков' },
-      { at: v(12, hip - 6), text: 'линия бёдер', size: 4 },
-    ],
-    fold: [P1b, P3b],
+    cut: 'Крой 1 со сгибом',
+    labelAt: v(12, hip + 70),
+    notes: [{ at: v(12, hip - 6), text: 'линия бёдер', size: 4 }],
+    levels,
+    notches: [],
     seams: { side: sideBackLen, waist: waistBack, hem: half, dart: back },
-  })
-  const frontPiece = toPiece({
+  }
+  const frontPanel: Panel = {
     id: 'muller-skirt-front',
     title: 'Переднее полотнище юбки',
-    outline: frontOutline,
-    extra: [{ role: 'mark', line: new Line(P5).to(P2f) }],
-    fold: [P1f, P3f],
+    role: 'skirtFront',
+    method: 'Мюллер',
+    edges: frontEdges,
+    fish: [],
+    marks: [{ role: 'mark', line: new Line(P5).to(P2f) }],
     grain: [v(half + half * 0.6, hip + 40), v(half + half * 0.6, len - 60)],
-    labels: [
-      { at: v(half + 12, hip + 70), text: 'Переднее полотнище', size: 7 },
-      { at: v(half + 12, hip + 82), text: 'Крой 1 со сгибом' },
-      { at: v(half + 12, hip + 92), text: 'Мюллер · без припусков' },
-      { at: v(half + 12, hip - 6), text: 'линия бёдер', size: 4 },
-    ],
+    cut: 'Крой 1 со сгибом',
+    labelAt: v(half + 12, hip + 70),
+    notes: [{ at: v(half + 12, hip - 6), text: 'линия бёдер', size: 4 }],
+    levels,
+    notches: [],
     seams: { side: sideFrontLen, waist: waistFront, hem: W - half, dart: front },
-  })
+  }
 
   const waistTotal = 2 * (waistBack + waistFront)
   const points: Record<string, Vec> = {
@@ -233,7 +241,8 @@ export function draftMullerSkirt(m: M, o: MullerSkirtOptions): BlockResult {
   })
 
   return {
-    pieces: [backPiece, frontPiece],
+    panels: [backPanel, frontPanel],
+    pieces: [backPanel, frontPanel].map(netPiece),
     points,
     steps,
     checks: [

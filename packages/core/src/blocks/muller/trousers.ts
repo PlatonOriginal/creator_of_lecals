@@ -1,4 +1,5 @@
-import { Line, add, along, dist, lineX, mid, mul, norm, sub, through, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, add, along, dist, lineX, mid, mul, norm, sub, through, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -64,6 +65,7 @@ export const mullerTrousers: BlockDef<MullerTrousersOptions> = {
   id: 'muller-trousers',
   title: 'Брюки',
   method: 'muller',
+  garment: 'trousers',
   required: MULLER_TROUSERS_REQUIRED,
   options: [
     { id: 'waistEase', title: 'Прибавка по талии (к ¼От, на посадку)', min: 0, max: 10, step: 1, hint: 'В книге 0–0,5 см.' },
@@ -142,15 +144,18 @@ export function draftMullerTrousers(m: M, o: MullerTrousersOptions): BlockResult
   const frontCrotch = new Line(P20).to(P8b).smooth(sub(P8b, P20), v(1, 0), P17, 0.55)
   const frontWaist1 = new Line(P22).smooth(v(1, 0.05), v(1, 0), fd.left)
   const frontWaist2 = new Line(fd.right).to(P20)
-  const frontOutline = new Line(P15)
+  const frontEdges = new Outline(P15, 'side')
     .append(frontSide.reversed())
+    .edge('waist')
     .append(frontWaist1)
-    .to(fd.tip)
-    .to(fd.right)
+    .dart('waist', fd.tip, fd.right, 'b')
     .append(frontWaist2)
+    .edge('crotch')
     .append(frontCrotch)
+    .edge('inseam')
     .append(frontInseam)
-    .to(P15)
+    .edge('hem')
+    .close()
 
   // Back (fig. 4–6), in the same grid.
   const P25 = v(x11 + c('11–25', 'Смещение сгиба задней половинки', '1…2', 15), y7)
@@ -199,20 +204,23 @@ export function draftMullerTrousers(m: M, o: MullerTrousersOptions): BlockResult
 
   const backWaist1 = new Line(P38).to(bd.right)
   const backWaist2 = new Line(bd.left).to(P37)
-  const backRaw = new Line(P33)
+  const backRaw = new Outline(P33, 'side')
     .append(backSide.reversed())
+    .edge('waist')
     .append(backWaist1)
-    .to(bd.tip)
-    .to(bd.left)
+    .dart('waist', bd.tip, bd.left, 'b')
     .append(backWaist2)
+    .edge('crotch')
     .append(backCrotch)
+    .edge('inseam')
     .append(backInseam)
-    .to(P33)
+    .edge('hem')
+    .close()
 
   // Put the back on the left, mirrored, side seams facing each other.
   const gap = 40
   const flip = (q: Vec) => v(-q.x - gap, q.y)
-  const backOutline = backRaw.map(flip)
+  const backEdges = backRaw.map((e) => ({ ...e, line: e.line.map(flip) }))
 
   const sideF = frontSide.length()
   const sideB = backSide.length()
@@ -224,42 +232,50 @@ export function draftMullerTrousers(m: M, o: MullerTrousersOptions): BlockResult
   if (P39.y < y7) warnings.push('Задний шаговый срез получился короче нормы: проверьте высоту сидения и длину сбоку.')
   if (P28.y > P26.y) warnings.push('Средний шов сзади построился ниже линии бёдер: проверьте мерки.')
 
-  const front = toPiece({
+  const levels = { hip: y7, knee: y4 }
+  const front: Panel = {
     id: 'muller-trousers-front',
     title: 'Передняя половинка брюк',
-    outline: frontOutline,
-    extra: [
+    role: 'trousersFront',
+    method: 'Мюллер',
+    edges: frontEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: new Line(P7).to(P9) },
       { role: 'mark', line: new Line(P3a).to(P17) },
       { role: 'mark', line: new Line(P18).to(P19) },
     ],
     grain: [v(x11, y3 + 60), v(x11, len - 120)],
-    labels: [
-      { at: v(x11 - 60, y4 - 120), text: 'Передняя половинка', size: 7 },
-      { at: v(x11 - 60, y4 - 108), text: 'Крой 2' },
-      { at: v(x11 - 60, y4 - 98), text: 'Мюллер · без припусков' },
-    ],
+    cut: 'Крой 2',
+    labelAt: v(x11 - 60, y4 - 120),
+    notes: [],
+    levels,
+    notches: [],
     seams: { side: sideF, inseam: inseamF, waist: waistF },
-  })
-  const back = toPiece({
+  }
+  const back: Panel = {
     id: 'muller-trousers-back',
     title: 'Задняя половинка брюк',
-    outline: backOutline,
-    extra: [
+    role: 'trousersBack',
+    method: 'Мюллер',
+    edges: backEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: new Line(flip(P29)).to(flip(P30)) },
       { role: 'mark', line: new Line(flip(P32)).to(flip(P31)) },
     ],
     grain: [flip(v(P25.x, y3 + 60)), flip(v(P25.x, len - 120))],
-    labels: [
-      { at: flip(v(P25.x + 60, y4 - 120)), text: 'Задняя половинка', size: 7 },
-      { at: flip(v(P25.x + 60, y4 - 108)), text: 'Крой 2' },
-      { at: flip(v(P25.x + 60, y4 - 98)), text: 'Мюллер · без припусков' },
-    ],
+    cut: 'Крой 2',
+    labelAt: flip(v(P25.x + 60, y4 - 120)),
+    notes: [],
+    levels,
+    notches: [],
     seams: { side: sideB, inseam: inseamB, waist: waistB },
-  })
+  }
 
   return {
-    pieces: [back, front],
+    panels: [back, front],
+    pieces: [back, front].map(netPiece),
     points: {
       P3a, P7, P8, P8a, P8b, P9, P10, P11, P12, P13, P14, P15, P15a, P16, P16a, P17, P18, P19, P20, P21, P22, P23, P24,
       P25, P26, P27, P28, P29, P30, P31, P32, P33, P34, P35, P36, P37, P38, P39,

@@ -59,7 +59,7 @@ export async function piecesToPdf(pieces: Piece[], opts: PdfOptions): Promise<Pd
   const tileW = paper.width - 2 * margin
   const tileH = paper.height - 2 * margin
   // Rows no wider than one sheet on large paper; on A4 tiles, about a metre.
-  const layout = layoutPieces(pieces, 20, Math.max(tileW, 1000))
+  const layout = layoutPieces(pieces, 20, tileW >= 500 ? tileW : 1000)
   const cols = Math.max(1, Math.ceil(layout.width / tileW))
   const rows = Math.max(1, Math.ceil(layout.height / tileH))
 
