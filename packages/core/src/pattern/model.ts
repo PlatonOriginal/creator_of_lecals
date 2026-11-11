@@ -164,7 +164,9 @@ function applySpec(block: { garment: GarmentKind }, base: BlockResult, spec: Mod
       if (garment === 'skirt' && fl.darts > 0) q = dartsToHem(q, fl.darts)
       if (garment === 'skirt' && fl.slashes > 0) q = slashFlare(q, fl.slashes, Math.min(8, Math.max(2, Math.ceil(fl.slashes / 60))))
       if (fl.side > 0) q = flareSeam(q, 'side', fl.side, garment === 'skirt' && fl.darts > 0 ? 0 : pivot)
-      if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, p.fish.length ? pivot : (p.levels.waist ?? pivot))
+      // From the hip line, like the side seams: pivoting at the waist straightened
+      // the princess seam over the hips and took up to 3 cm off the hip girth.
+      if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, pivot)
       return q
     })
   }

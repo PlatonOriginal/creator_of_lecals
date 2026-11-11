@@ -4,6 +4,7 @@ import {
   angleBetween,
   dist,
   lineX,
+  lerp,
   mid,
   mul,
   norm,
@@ -589,7 +590,11 @@ export function flareSeam(panel: Panel, id: string, amount: number, pivotY: numb
     const ang = (Math.asin(Math.min(0.9, amount / r)) * 180) / Math.PI
     const poly = loopPoints(p.edges)
     const cand = [rotate(H, ang, K), rotate(H, -ang, K)]
-    const H2 = pointInPolygon(mid(H, cand[0]!), poly) ? cand[1]! : cand[0]!
+    // Test a point a little above the hem: the middle of H and a candidate
+    // lies on the hem itself when the hem is straight, and the test is a toss-up.
+    // Test a point a little above the hem: the middle of H and a candidate
+    // lies on the hem itself when the hem is straight, and the test is a toss-up.
+    const H2 = pointInPolygon(lerp(mid(H, cand[0]!), K, 0.1), poly) ? cand[1]! : cand[0]!
     const newLine = upper.segs.length ? upper.to(H2) : new Line(K).to(H2)
     const edges = [...p.edges]
     edges[k] = { ...e, line: toHem ? newLine : newLine.reversed() }
