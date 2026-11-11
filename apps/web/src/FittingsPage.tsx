@@ -28,7 +28,7 @@ import { draftProfile } from './draftModel'
 import type { Figure } from './figureStore'
 import { deleteFitting, listFittings, newId, putFitting, type ModelDoc } from './library'
 
-const GUIDE_URL = 'https://github.com/PlatonOriginal/creator_of_lecals/blob/main/docs/m5-sewist-guide.md'
+const GUIDE_URL = './guide.html'
 
 const day = (t: number) => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 const cm = (mm: number) => (Math.round(mm) / 10).toLocaleString('ru-RU', { maximumFractionDigits: 1 })
