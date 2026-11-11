@@ -68,6 +68,8 @@ export interface Shell {
 
 const RING = 64
 const SLEEVE_RING = 32
+/** Over this length from its start the sleeve opens from the arm to its girth, m. */
+const SLEEVE_OPEN = 0.04
 /** The shell sits this far off the skin where the garment is tight, m. */
 const GAP = 0.003
 
@@ -250,6 +252,7 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
   const gridBody: ClothGrid['body'] = []
   let pinned = 0
   let lastTorso: V3[] = []
+  let topRing: TopRing | undefined
   for (const y of ys) {
     // Trousers between the hips and the crotch: the pattern there includes the
     // crotch extensions, which go between the legs, not round the body.
@@ -259,6 +262,7 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
     // Above the bust line the cut runs into the arms: colour as at the bust.
     const c = g.garment === 'dress' && y > L.levels.bust ? opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)) : opt.color(r.ease)
     lastTorso = to3(r.pts, y)
+    topRing ??= { y, c: r.ring.c, pts: r.pts }
     torsoRings.push(lastTorso.map((p) => b.add(p, c)))
     if (y >= L.levels.hips) pinned++
     const rad = new Float32Array(RING)
@@ -293,11 +297,13 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
     }
   }
 
-  // 3. Shoulders of a dress: the body surface above the top ring, pushed out.
-  if (g.garment === 'dress') upperBodice(mesh, L, yTop, b, opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)))
+  // 3. Sleeves.
+  const sleeveStart = g.garment === 'dress' && g.sleeve && g.sleeve.length > 20 ? sleeves(mesh, L, g.sleeve, b, opt, edges, bands) : undefined
 
-  // 4. Sleeves.
-  if (g.garment === 'dress' && g.sleeve && g.sleeve.length > 20) sleeves(mesh, L, g.sleeve, b, opt, edges, bands)
+  // 4. Shoulders of a dress: the body surface above the top ring, pushed out,
+  // down the arm to where the sleeve starts.
+  if (g.garment === 'dress' && topRing)
+    upperBodice(mesh, L, topRing, sleeveStart, b, opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)))
 
   // 5. Bands at the main levels.
   const band = (id: string, y: number, girth: number, legs: 'both' | 'left' | 'torso') => {
@@ -345,11 +351,38 @@ function armholePlane(L: Landmarks): { at: V3; n: V3 } {
   return { at: A, n }
 }
 
-function upperBodice(mesh: MeshLike, L: Landmarks, yTop: number, b: Builder, color: Rgb) {
+/** The top ring of the torso: its height, centre [x, z] and inflated points (on rays at even angles from the centre). */
+interface TopRing {
+  y: number
+  c: [number, number]
+  pts: Float64Array
+}
+
+/** Blend from the top ring up to the skin over this height, m. */
+const BLEND = 0.08
+/** The bodice goes this far under the top ring and into the sleeve, so no skin shows at the joins, m. */
+const OVERLAP = 0.05
+/** The bodice goes this far down the arm past the start of the sleeve (the first rings are cut aslant across the shoulder joint), m. */
+const SLEEVE_OVERLAP = 0.06
+
+function upperBodice(mesh: MeshLike, L: Landmarks, top: TopRing, sleeveStart: number | undefined, b: Builder, color: Rgb) {
   const v = mesh.vertices
   const f = mesh.faces
   const nV = v.length / 3
+  const yTop = top.y
   const { at, n } = armholePlane(L)
+  const S = L.shoulderPoint
+  const axis = L.armAxis
+  const n0 = top.pts.length / 2
+  /** Radius of the top ring at an angle round its centre. */
+  const ringR = (t: number) => {
+    const u = (((t / (2 * Math.PI)) * n0) % n0 + n0) % n0
+    const i = Math.floor(u)
+    const j = (i + 1) % n0
+    const w = u - i
+    const r = (k: number) => Math.hypot(top.pts[2 * k]! - top.c[0], top.pts[2 * k + 1]! - top.c[1])
+    return r(i) * (1 - w) + r(j) * w
+  }
   const neckY = L.rings.neck.centre[1]
   // Vertex normals.
   const nrm = new Float32Array(v.length)
@@ -366,20 +399,50 @@ function upperBodice(mesh: MeshLike, L: Landmarks, yTop: number, b: Builder, col
       nrm[i + 2]! += fn[2]
     }
   }
-  const keep = new Int32Array(nV).fill(-1)
+  // Which vertices belong to the bodice.
+  const inside = new Uint8Array(nV)
+  const onArm = new Uint8Array(nV)
   for (let i = 0; i < nV; i++) {
     const p: V3 = [v[i * 3]!, v[i * 3 + 1]!, v[i * 3 + 2]!]
-    if (p[1] < yTop - 0.01 || p[1] > neckY) continue
+    if (p[1] > neckY) continue
     const side: V3 = [Math.abs(p[0]), p[1], p[2]]
-    if (dot3(sub3(side, at), n) > 0) continue
+    // Past the armhole: the arm. With a sleeve, keep the shoulder joint (also
+    // under the arm) up to where the sleeve rings start, so no skin shows
+    // between them.
+    const arm = dot3(sub3(side, at), n) > 0
+    onArm[i] = arm ? 1 : 0
+    if (arm ? sleeveStart === undefined || dot3(sub3(side, S), axis) > sleeveStart + SLEEVE_OVERLAP : p[1] < yTop - OVERLAP) continue
+    inside[i] = 1
+  }
+  // Every triangle that touches the bodice: a ragged edge of whole triangles
+  // left slits of skin at the joins (the sleeve, the top ring).
+  const keep = new Int32Array(nV).fill(-1)
+  const vertex = (i: number) => {
+    if (keep[i]! >= 0) return keep[i]!
+    const p: V3 = [v[i * 3]!, v[i * 3 + 1]!, v[i * 3 + 2]!]
     const nn = norm3([nrm[i * 3]!, nrm[i * 3 + 1]!, nrm[i * 3 + 2]!])
-    keep[i] = b.add(add3(p, mul3(nn, 0.005)), color)
+    let q = add3(p, mul3(nn, 0.005))
+    // Near the top ring, out to it: the ring stands off the body by the ease
+    // and bridges the hollows (between the breasts), the skin does not.
+    const w = Math.min(1, Math.max(0, 1 - (p[1] - yTop) / BLEND))
+    if (w > 0 && !onArm[i]) {
+      const dx = q[0] - top.c[0]
+      const dz = q[2] - top.c[1]
+      const r = Math.hypot(dx, dz)
+      const R = ringR(Math.atan2(dz, dx))
+      if (r > 1e-6 && R > r) {
+        const k = 1 + (w * (R - r)) / r
+        q = [top.c[0] + dx * k, q[1], top.c[1] + dz * k]
+      }
+    }
+    keep[i] = b.add(q, color)
+    return keep[i]!
   }
   for (let t = 0; t < f.length; t += 3) {
-    const a = keep[f[t]!]!
-    const c1 = keep[f[t + 1]!]!
-    const c2 = keep[f[t + 2]!]!
-    if (a >= 0 && c1 >= 0 && c2 >= 0) b.idx.push(a, c1, c2)
+    const i0 = f[t]!
+    const i1 = f[t + 1]!
+    const i2 = f[t + 2]!
+    if (inside[i0] || inside[i1] || inside[i2]) b.idx.push(vertex(i0), vertex(i1), vertex(i2))
   }
 }
 
@@ -391,7 +454,7 @@ function sleeves(
   opt: ShellOptions,
   edges: V3[][],
   bands: ShellBand[],
-) {
+): number | undefined {
   const axis = L.armAxis
   const S = L.shoulderPoint
   const { at, n } = armholePlane(L)
@@ -418,11 +481,17 @@ function sleeves(
     // Near the shoulder the cut still runs through the shoulder joint: the
     // sleeve starts where the cut is about the arm alone.
     if (!rings.length && polygonPerimeter(r.pts) > 1.35 * armGirth && d < len) continue
-    const { pts: big, body } = inflate(r, sl.girthAt(d * 1000) / 1000)
+    // The sleeve starts snug on the arm, where the bodice runs into it, and
+    // opens to its girth over the first few centimetres: a puffed cap
+    // standing off from its very edge left the skin under it open.
+    const want = sl.girthAt(d * 1000) / 1000
+    const bodyG = polygonPerimeter(r.pts)
+    const t = rings.length ? Math.min(1, (d - ds_[0]!) / SLEEVE_OPEN) : 0
+    const { pts: big } = inflate(r, bodyG + Math.max(0, want - bodyG) * t)
     const ring: V3[] = []
     for (let i = 0; i < SLEEVE_RING; i++) ring.push(add3(o, add3(mul3(cut.u, big[2 * i]!), mul3(cut.w, big[2 * i + 1]!))))
     rings.push(ring)
-    eases.push(sl.girthAt(d * 1000) - body * 1000)
+    eases.push((want - bodyG) * 1000)
     ds_.push(d)
   }
   // Band on the left sleeve just under the arm (where Оп is compared).
@@ -442,4 +511,5 @@ function sleeves(
     const last = rings.at(-1)
     if (last) edges.push(last.map((p) => [mirror ? -p[0] : p[0], p[1], p[2]] as V3))
   }
+  return ds_[0]
 }
