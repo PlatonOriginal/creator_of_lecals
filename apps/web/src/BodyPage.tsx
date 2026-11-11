@@ -1,20 +1,28 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AnnyBody,
-  type BodyMeasures,
+  type BodyRegions,
+  type FitKey,
   type FitResult,
   type FitTarget,
+  type FullMeasures,
+  type Landmarks,
   type LocalChanges,
   type Phenotypes,
   FEMALE_BASE,
+  FIT_LOCAL,
+  bodyLandmarks,
+  bodyRegions,
   fitBody,
-  measureBody,
+  garmentShell,
   loadAnnyBody,
 } from '@lecals/body'
-import { formatCm } from '@lecals/core'
-import { type BodyViewer, createBodyViewer } from '@lecals/viewer'
+import { EASE_VERDICTS, MEASUREMENTS, easeVerdict, fitLevels, formatCm, leadingOf, type FitLevel } from '@lecals/core'
+import { type BodyViewer, type ViewName, type ViewerBand, createBodyViewer } from '@lecals/viewer'
 import { CmInput } from './CmInput'
 import type { Figure } from './figureStore'
+import type { ModelDoc } from './library'
+import { draftProfile, filledMeasurements } from './draftModel'
 
 const PHENOTYPE_SLIDERS: { id: keyof Phenotypes; title: string }[] = [
   { id: 'height', title: 'Рост' },
@@ -40,19 +48,47 @@ const LOCAL_SLIDERS: { id: string; title: string }[] = [
 
 const DEFAULT_PHENOTYPES: Phenotypes = FEMALE_BASE
 
-/** The measurements the mannequin is fitted to, or undefined without a height. */
+/**
+ * The measurements the mannequin is fitted to, or undefined without a height.
+ * With height, bust and hips the gaps are filled from the typical figure,
+ * as the «Выкройка» tab drafts with them; otherwise only what was entered.
+ */
 function fitTarget(f: Figure): FitTarget | undefined {
-  const { height, bust, waist, hips } = f.values
-  if (height === undefined) return undefined
-  return { height, bust, waist, hips }
+  if (f.values.height === undefined) return undefined
+  const src = leadingOf(f.values) ? filledMeasurements(f.values) : f.values
+  const t: FitTarget = { height: f.values.height }
+  for (const k of Object.keys(FIT_LOCAL) as FitKey[]) if (src[k] !== undefined) t[k] = src[k]
+  return t
 }
 
-const FIT_ROWS = [
-  { id: 'height', title: 'Рост' },
-  { id: 'bust', title: 'Обхват груди Ог3' },
-  { id: 'waist', title: 'Обхват талии' },
-  { id: 'hips', title: 'Обхват бёдер' },
-] as const
+type FitRowId = 'height' | FitKey
+
+/** Rows of the table: what is fitted, in the order of the measurement wizard. Editable: the leading ones. */
+const FIT_ROWS: { id: FitRowId; edit?: boolean; approx?: boolean }[] = [
+  { id: 'height', edit: true },
+  { id: 'bust', edit: true },
+  { id: 'waist', edit: true },
+  { id: 'hips', edit: true },
+  { id: 'underbust' },
+  { id: 'neck' },
+  { id: 'shoulderLength', approx: true },
+  { id: 'backLength' },
+  { id: 'upperArm' },
+  { id: 'waistToHips', approx: true },
+  { id: 'thigh' },
+]
+
+const VIEWS: { id: ViewName; title: string }[] = [
+  { id: 'front', title: 'Спереди' },
+  { id: 'side', title: 'Сбоку' },
+  { id: 'back', title: 'Сзади' },
+  { id: 'top', title: 'Верх' },
+  { id: 'bottom', title: 'Низ' },
+]
+
+const hexRgb = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number]
+const easeColor = (ease: number) => hexRgb(EASE_VERDICTS[easeVerdict(ease)].color)
+const signedCm = (mm: number) => `${mm >= 0 ? '+' : '−'}${formatCm(Math.abs(mm))}`
 
 interface Stats {
   bytes: number
@@ -65,14 +101,17 @@ export function BodyPage({
   figure,
   onChange,
   onOpenMeasurements,
+  model,
 }: {
   figure: Figure
   onChange: (f: Figure) => void
   onOpenMeasurements: () => void
+  model: ModelDoc
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<BodyViewer | null>(null)
   const bodyRef = useRef<AnnyBody | null>(null)
+  const regionsRef = useRef<BodyRegions | null>(null)
   const bufRef = useRef<Float32Array | null>(null)
   const [phen, setPhen] = useState<Phenotypes>(DEFAULT_PHENOTYPES)
   const [local, setLocal] = useState<LocalChanges>({})
@@ -81,7 +120,11 @@ export function BodyPage({
   const [fitting, setFitting] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [refit, setRefit] = useState(0)
-  const [current, setCurrent] = useState<BodyMeasures | null>(null)
+  const [current, setCurrent] = useState<FullMeasures | null>(null)
+  const [landmarks, setLandmarks] = useState<Landmarks | null>(null)
+  const [showModel, setShowModel] = useState(true)
+  const [showShell, setShowShell] = useState(true)
+  const [showLabels, setShowLabels] = useState(true)
   const target = fitTarget(figure)
   // Refit only once typing has paused: a fit takes a second or more on a phone.
   const targetKey = useDebounced(JSON.stringify(target ?? null), 800)
@@ -105,6 +148,7 @@ export function BodyPage({
       .then((body) => {
         if (cancelled) return
         bodyRef.current = body
+        regionsRef.current = bodyRegions(body)
         const t2 = performance.now()
         const v = body.restVertices(DEFAULT_PHENOTYPES)
         const recomputeMs = performance.now() - t2
@@ -138,8 +182,11 @@ export function BodyPage({
     // Measure the mannequin as it is now, after the sliders settle.
     const timer = setTimeout(() => {
       try {
-        setCurrent(measureBody({ vertices: v, faces: body.faces }))
+        const L = bodyLandmarks({ vertices: v, faces: body.faces }, regionsRef.current!)
+        setLandmarks(L)
+        setCurrent(L.measures)
       } catch {
+        setLandmarks(null)
         setCurrent(null)
       }
     }, 200)
@@ -165,12 +212,58 @@ export function BodyPage({
     return () => clearTimeout(timer)
   }, [loaded, targetKey, refit])
 
+  // The model on the mannequin: rings of the pattern, the ease map and the shell.
+  const drafted = useMemo(() => {
+    try {
+      return showModel ? draftProfile(model, figure.values) : undefined
+    } catch {
+      return undefined
+    }
+  }, [showModel, model, figure.values])
+  const levels: FitLevel[] = useMemo(() => (drafted ? fitLevels(drafted.profile, drafted.m) : []), [drafted])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    const body = bodyRef.current
+    const v = bufRef.current
+    if (!viewer || !body || !v || !landmarks) return
+    if (!drafted) {
+      viewer.setShell(null)
+      // Without a model: the girth lines of the body.
+      const lines: [keyof Landmarks['rings'], string][] = [
+        ['bust', 'Ог3'],
+        ['waist', 'От'],
+        ['hips', 'Об'],
+      ]
+      viewer.setBands(
+        lines.map(([id, short]) => {
+          const r = landmarks.rings[id]
+          const front = r.points.reduce((a, p) => (p[2] > a[2] ? p : a), r.points[0]!)
+          return { points: r.points, color: '#555555', label: `${short} ${formatCm(r.length)}`, labelAt: front }
+        }),
+      )
+      return
+    }
+    const shell = garmentShell({ vertices: v, faces: body.faces }, landmarks, drafted.profile, { color: easeColor })
+    viewer.setShell(shell)
+    const bands: ViewerBand[] = []
+    for (const b of shell.bands) {
+      const l = levels.find((x) => x.id === b.id)
+      if (!l) continue
+      bands.push({ points: b.points, labelAt: b.labelAt, color: EASE_VERDICTS[l.verdict].color, label: `${l.title} ${signedCm(l.ease)}` })
+    }
+    viewer.setBands(bands)
+  }, [landmarks, drafted, levels])
+
+  useEffect(() => viewerRef.current?.setShellVisible(showShell), [showShell])
+  useEffect(() => viewerRef.current?.setLabelsVisible(showLabels), [showLabels])
+
   function manual(update: () => void) {
     update()
     setFit(null)
   }
 
-  function setMeasurement(id: (typeof FIT_ROWS)[number]['id'], v: number | undefined) {
+  function setMeasurement(id: FitRowId, v: number | undefined) {
     const values = { ...figure.values }
     if (v === undefined) delete values[id]
     else values[id] = v
@@ -196,6 +289,13 @@ export function BodyPage({
         {!stats && !error && <div className="overlay">Загружаю манекен…</div>}
         {fitting && <div className="overlay">Подбираю фигуру по меркам…</div>}
         {error && <div className="overlay error">{error}</div>}
+        <div className="views">
+          {VIEWS.map((v) => (
+            <button key={v.id} onClick={() => viewerRef.current?.setView(v.id)}>
+              {v.title}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="panel">
         <h2>Манекен по меркам</h2>
@@ -207,6 +307,18 @@ export function BodyPage({
             </button>
           </p>
         )}
+        <FitMap
+          model={model}
+          drafted={drafted !== undefined}
+          showModel={showModel}
+          setShowModel={setShowModel}
+          showShell={showShell}
+          setShowShell={setShowShell}
+          showLabels={showLabels}
+          setShowLabels={setShowLabels}
+          levels={levels}
+        />
+        <h2>Мерки и манекен</h2>
         <table className="fit">
           <thead>
             <tr>
@@ -217,17 +329,29 @@ export function BodyPage({
           </thead>
           <tbody>
             {FIT_ROWS.map((r) => {
-              const want = figure.values[r.id]
+              const spec = MEASUREMENTS[r.id]
+              const want = target?.[r.id]
+              const own = figure.values[r.id] !== undefined
               const have = current?.[r.id]
+              const off = want !== undefined && have !== undefined && Math.abs(have - want) > (r.approx ? 25 : 10)
               return (
                 <tr key={r.id}>
-                  <td>{r.title}</td>
                   <td>
-                    <CmInput label={r.title} value={want} onChange={(v) => setMeasurement(r.id, v)} />
+                    {spec.title} <span className="short">{spec.short}</span>
+                    {r.approx && <span className="short"> ≈</span>}
                   </td>
-                  <td className={want !== undefined && have !== undefined && Math.abs(have - want) > 10 ? 'off' : ''}>
-                    {have === undefined ? '—' : formatCm(have)}
+                  <td>
+                    {r.edit ? (
+                      <CmInput label={spec.title} value={figure.values[r.id]} onChange={(v) => setMeasurement(r.id, v)} />
+                    ) : want === undefined ? (
+                      '—'
+                    ) : (
+                      <span className={own ? '' : 'typical'} title={own ? '' : 'По типовой фигуре'}>
+                        {formatCm(want)}
+                      </span>
+                    )}
                   </td>
+                  <td className={off ? 'off' : ''}>{have === undefined ? '—' : formatCm(have)}</td>
                 </tr>
               )
             })}
@@ -235,8 +359,9 @@ export function BodyPage({
         </table>
         {target && fit && (
           <p className="hint">
-            Манекен подобран по меркам за {Math.round(fit.ms)} мс. Обхваты на нём меряются как сантиметровой лентой. Пока
-            подгоняются рост и три главных обхвата; остальные мерки (спина, плечи, руки, ноги) добавятся на этапе M4.
+            Манекен подобран по меркам за {Math.round(fit.ms)} мс. Обхваты на нём меряются как сантиметровой лентой. Серым
+            показаны мерки по типовой фигуре (их можно уточнить во вкладке «Мерки»). Значок ≈: ширину плеча и высоту бёдер
+            манекен повторяет приблизительно, расхождение до 2,5 см (по высоте бёдер у модели Anny бывает и больше).
           </p>
         )}
         {target && !fit && !fitting && loaded && (
@@ -287,7 +412,7 @@ export function BodyPage({
           />
         ))}
         <h2>Местные изменения</h2>
-        <p className="hint">Обхваты груди, талии и бёдер подбираются по меркам автоматически.</p>
+        <p className="hint">По меркам подбираются автоматически все изменения, кроме живота и ягодиц.</p>
         {LOCAL_SLIDERS.map((s) => (
           <Slider
             key={s.id}
@@ -307,6 +432,88 @@ export function BodyPage({
         </p>
       </div>
     </section>
+  )
+}
+
+/** The ease map panel: the model on the mannequin, level by level. */
+function FitMap({
+  model,
+  drafted,
+  showModel,
+  setShowModel,
+  showShell,
+  setShowShell,
+  showLabels,
+  setShowLabels,
+  levels,
+}: {
+  model: ModelDoc
+  drafted: boolean
+  showModel: boolean
+  setShowModel: (v: boolean) => void
+  showShell: boolean
+  setShowShell: (v: boolean) => void
+  showLabels: boolean
+  setShowLabels: (v: boolean) => void
+  levels: FitLevel[]
+}) {
+  return (
+    <>
+      <h2>Примерка: «{model.name}»</h2>
+      <div className="toggles">
+        <label>
+          <input type="checkbox" checked={showModel} onChange={(e) => setShowModel(e.target.checked)} /> Модель на манекене
+        </label>
+        <label>
+          <input type="checkbox" checked={showShell} disabled={!showModel} onChange={(e) => setShowShell(e.target.checked)} /> Чехол
+        </label>
+        <label>
+          <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} /> Подписи
+        </label>
+      </div>
+      {showModel && !drafted && <p className="hint">Модель не строится по этим меркам: проверьте их во вкладке «Выкройка».</p>}
+      {showModel && drafted && (
+        <>
+          <table className="fit ease">
+            <thead>
+              <tr>
+                <th />
+                <th>Изделие</th>
+                <th>Тело</th>
+                <th>Свобода</th>
+              </tr>
+            </thead>
+            <tbody>
+              {levels.map((l) => (
+                <tr key={l.id}>
+                  <td>{l.title}</td>
+                  <td>{formatCm(l.garment)}</td>
+                  <td>{formatCm(l.body)}</td>
+                  <td>
+                    <span className="dot" style={{ background: EASE_VERDICTS[l.verdict].color }} />
+                    {signedCm(l.ease)}
+                    <div className="verdict">{EASE_VERDICTS[l.verdict].title}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="legend">
+            {Object.values(EASE_VERDICTS).map((v) => (
+              <span key={v.title}>
+                <span className="dot" style={{ background: v.color }} />
+                {v.title}
+              </span>
+            ))}
+          </p>
+          <p className="hint">
+            Свобода = обхват изделия по чертежу минус мерка: тесно — меньше нуля, впритык — до 1 см, по фигуре — до 6 см,
+            свободно — до 12 см. Чехол — грубая оболочка изделия без складок ткани: он показывает силуэт и длину, цвет на нём —
+            свобода на этой высоте. Модель меняется во вкладке «Выкройка».
+          </p>
+        </>
+      )}
+    </>
   )
 }
 

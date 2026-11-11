@@ -209,8 +209,6 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
   const ys: number[] = []
   for (let y = yTop; y > Math.max(yHem, yCrotch) + 1e-4; y -= step) ys.push(y)
   ys.push(Math.max(yHem, yCrotch))
-  // Trousers: the body part reaches a little under the crotch, to meet the legs.
-  if (trousers) ys.push(yCrotch - 0.02)
   const dyOf = (y: number) => {
     // Invert the height map by bisection (it is monotonic).
     let lo = -2000
@@ -228,7 +226,10 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
   // at the seams, and a cut across misses those parts.
   const girth = (dy: number) => {
     if (g.waistSeam && dy < 15) return g.waistSeam
-    const d = Math.min(g.hem - 5, Math.max(g.top + 15, dy))
+    // Above the bust points the bust dart is still open on the pattern: the
+    // dress round the chest is as wide as at the bust line.
+    const bust = g.levels.bust ?? g.levels.chest
+    const d = Math.min(g.hem - 5, Math.max(g.top + 15, bust ?? -Infinity, dy))
     let best = g.girthAt(d)
     if (d > g.hem - 100) for (let x = Math.max(g.top + 15, d - 100); x < d; x += 10) best = Math.max(best, g.girthAt(x))
     return best
@@ -238,7 +239,8 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
   for (const y of ys) {
     const r = ringAt(y, girth(dyOf(y)), 'both')
     if (!r) continue
-    const c = opt.color(r.ease)
+    // Above the bust line the cut runs into the arms: colour as at the bust.
+    const c = g.garment === 'dress' && y > L.levels.bust ? opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)) : opt.color(r.ease)
     lastTorso = to3(r.pts, y)
     torsoRings.push(lastTorso.map((p) => b.add(p, c)))
   }
@@ -274,7 +276,7 @@ export function garmentShell(input: MeshLike, L: Landmarks, g: GarmentShape, opt
   if (g.garment === 'dress') upperBodice(mesh, L, yTop, b, opt.color(bandEase(g, g.levels.bust ?? g.levels.chest, L.measures.bust)))
 
   // 4. Sleeves.
-  if (g.garment === 'dress' && g.sleeve && g.sleeve.length > 20) sleeves(mesh, L, g.sleeve, b, opt, edges)
+  if (g.garment === 'dress' && g.sleeve && g.sleeve.length > 20) sleeves(mesh, L, g.sleeve, b, opt, edges, bands)
 
   // 5. Bands at the main levels.
   const band = (id: string, y: number, girth: number, legs: 'both' | 'left' | 'torso') => {
@@ -335,9 +337,9 @@ function upperBodice(mesh: MeshLike, L: Landmarks, yTop: number, b: Builder, col
     const e2: V3 = [v[c2]! - v[a]!, v[c2 + 1]! - v[a + 1]!, v[c2 + 2]! - v[a + 2]!]
     const fn = cross3(e1, e2)
     for (const i of [a, c1, c2]) {
-      nrm[i] += fn[0]
-      nrm[i + 1] += fn[1]
-      nrm[i + 2] += fn[2]
+      nrm[i]! += fn[0]
+      nrm[i + 1]! += fn[1]
+      nrm[i + 2]! += fn[2]
     }
   }
   const keep = new Int32Array(nV).fill(-1)
@@ -364,6 +366,7 @@ function sleeves(
   b: Builder,
   opt: ShellOptions,
   edges: V3[][],
+  bands: ShellBand[],
 ) {
   const axis = L.armAxis
   const S = L.shoulderPoint
@@ -397,6 +400,13 @@ function sleeves(
     rings.push(ring)
     eases.push(sl.girthAt(d * 1000) - body * 1000)
     ds_.push(d)
+  }
+  // Band on the left sleeve just under the arm (where Оп is compared).
+  const bi = ds_.findIndex((d) => d * 1000 >= sl.underarm + 10)
+  if (bi >= 0) {
+    const pts = rings[bi]!
+    const front = pts.reduce((a, p) => (p[2] > a[2] ? p : a), pts[0]!)
+    bands.push({ id: 'upperArm', points: pts, labelAt: front })
   }
   // The cap is not round the arm (it is set into the armhole): colour it as the sleeve under the arm.
   const ua = ds_.findIndex((d) => d * 1000 >= sl.underarm)

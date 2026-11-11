@@ -15,7 +15,6 @@ import {
   type V3,
   add3,
   convexHull,
-  dot3,
   len3,
   mul3,
   nearestPiece,
@@ -23,7 +22,6 @@ import {
   polygonPerimeter,
   slicePlane,
   sub3,
-  vert,
 } from './plane'
 
 /** Vertex sets of the landmarks, found once per body model. */
