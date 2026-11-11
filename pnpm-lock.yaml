@@ -66,6 +66,9 @@ importers:
 
   packages/body:
     devDependencies:
+      '@lecals/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5

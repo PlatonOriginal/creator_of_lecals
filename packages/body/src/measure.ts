@@ -8,6 +8,36 @@
 export interface MeshLike {
   vertices: Float32Array
   faces: Uint16Array | Uint32Array
+  /** Faces sorted into height bands, for quick horizontal cuts (see indexMesh). */
+  yIndex?: YIndex
+}
+
+export interface YIndex {
+  y0: number
+  step: number
+  /** Face numbers (triangle index, not ×3) of the faces that reach into each band. */
+  bands: Uint32Array[]
+}
+
+/**
+ * The same mesh with its faces sorted into 1 cm height bands, so a
+ * horizontal cut looks at a few hundred faces instead of all of them.
+ * Valid only while the vertices stay as they are.
+ */
+export function indexMesh(mesh: MeshLike, step = 0.01): MeshLike {
+  const { vertices: v, faces: f } = mesh
+  const { minY, maxY } = verticalExtent(v)
+  const n = Math.max(1, Math.ceil((maxY - minY) / step) + 1)
+  const lists: number[][] = Array.from({ length: n }, () => [])
+  for (let t = 0; t < f.length / 3; t++) {
+    const ya = v[f[3 * t]! * 3 + 1]!
+    const yb = v[f[3 * t + 1]! * 3 + 1]!
+    const yc = v[f[3 * t + 2]! * 3 + 1]!
+    const lo = Math.floor((Math.min(ya, yb, yc) - minY) / step)
+    const hi = Math.floor((Math.max(ya, yb, yc) - minY) / step)
+    for (let b = lo; b <= hi; b++) lists[b]!.push(t)
+  }
+  return { vertices: v, faces: f, yIndex: { y0: minY, step, bands: lists.map((l) => Uint32Array.from(l)) } }
 }
 
 /** Lowest and highest point of the body. */
@@ -26,7 +56,7 @@ export function verticalExtent(vertices: Float32Array): { minY: number; maxY: nu
  * Cross-section of the mesh by the horizontal plane at height y, split into
  * connected pieces (torso, arms, legs…). Each piece is a list of [x, z] points.
  */
-export function slicePieces({ vertices: v, faces: f }: MeshLike, y: number): Float64Array[] {
+export function slicePieces({ vertices: v, faces: f, yIndex }: MeshLike, y: number): Float64Array[] {
   // Each crossed mesh edge gives one point; a triangle links its two points.
   const pointOf = new Map<number, number>()
   const xs: number[] = []
@@ -53,15 +83,19 @@ export function slicePieces({ vertices: v, faces: f }: MeshLike, y: number): Flo
     }
     return id
   }
-  for (let t = 0; t < f.length; t += 3) {
+  const cut = (t: number) => {
     const a = f[t]!
     const b = f[t + 1]!
     const c = f[t + 2]!
     const ya = v[a * 3 + 1]! > y
-    if (ya === v[b * 3 + 1]! > y && ya === v[c * 3 + 1]! > y) continue
+    if (ya === v[b * 3 + 1]! > y && ya === v[c * 3 + 1]! > y) return
     const ids = [point(a, b), point(b, c), point(c, a)].filter((i): i is number => i !== undefined)
     for (let k = 1; k < ids.length; k++) parent[find(ids[k]!)] = find(ids[0]!)
   }
+  if (yIndex) {
+    const band = yIndex.bands[Math.floor((y - yIndex.y0) / yIndex.step)]
+    if (band) for (const t of band) cut(t * 3)
+  } else for (let t = 0; t < f.length; t += 3) cut(t)
   const groups = new Map<number, number[]>()
   for (let i = 0; i < xs.length; i++) {
     const r = find(i)
@@ -153,6 +187,10 @@ export interface BodyLevels {
   bust: number
   waist: number
   hips: number
+  /** Where the arms join the cross-section (the armpits). */
+  armpit?: number
+  /** Lowest height where the cut is one torso piece (the crotch). */
+  crotch?: number
 }
 
 export interface BodyMeasures {
@@ -171,7 +209,8 @@ export interface BodyMeasures {
  * - bust: the fullest girth above the waist, below the armpits (where the
  *   arms join the cross-section and the girth jumps).
  */
-export function findLevels(mesh: MeshLike): BodyLevels {
+export function findLevels(input: MeshLike): BodyLevels {
+  const mesh = input.yIndex ? input : indexMesh(input)
   const { minY, maxY } = verticalExtent(mesh.vertices)
   const H = maxY - minY
   const profile: { y: number; g: number; w: number }[] = []
@@ -218,8 +257,31 @@ export function findLevels(mesh: MeshLike): BodyLevels {
   return {
     hips: refine(hips, (a, b) => a > b),
     waist: waistY,
-    bust: refine(bust, (a, b) => a > b),
+    bust: bustLine(mesh, profile[bust]!.y, waistY, top),
+    armpit: top,
+    crotch: profile[crotch]!.y,
   }
+}
+
+/**
+ * Ог3 goes through the bust points: the most forward point of the chest.
+ * On a slim figure the fullest girth is up under the arms (the back is
+ * wide there), so the fullest girth is only the fallback.
+ */
+function bustLine(mesh: MeshLike, fullest: number, waistY: number, armpitY: number): number {
+  const lo = waistY + 0.6 * (armpitY - waistY) - 0.1 * (armpitY - waistY)
+  let best = fullest
+  let bestZ = -Infinity
+  for (let y = lo; y < armpitY - 0.01; y += 0.0025) {
+    const p = centralPiece(slicePieces(mesh, y))
+    let z = -Infinity
+    for (let k = 1; k < p.length; k += 2) z = Math.max(z, p[k]!)
+    if (z > bestZ + 1e-4) {
+      bestZ = z
+      best = y
+    }
+  }
+  return best
 }
 
 export function measureBody(mesh: MeshLike, levels: BodyLevels = findLevels(mesh)): BodyMeasures {

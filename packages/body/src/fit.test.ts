@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { AnnyBody, type AnnyMeta } from './anny'
-import { FEMALE_BASE, fitBody } from './fit'
+import { FEMALE_BASE, FIT_LOCAL, type FitKey, type FitTarget, fitBody } from './fit'
+import { typicalFigure } from '@lecals/core'
 import { findLevels, hullPerimeter, measureBody, verticalExtent } from './measure'
 
 const dir = fileURLToPath(new URL('../../../apps/web/public/body/', import.meta.url))
@@ -48,6 +49,26 @@ describe('fitBody', () => {
     expect(Math.abs(r.measured.bust - t.bust)).toBeLessThan(10)
     expect(Math.abs(r.measured.waist - t.waist)).toBeLessThan(10)
     expect(Math.abs(r.measured.hips - t.hips)).toBeLessThan(10)
+  })
+
+  it.each([
+    { height: 1640, bust: 880, hips: 960 },
+    { height: 1580, bust: 1000, hips: 1080 },
+    { height: 1700, bust: 840, hips: 900 },
+  ])('fits the full set of the typical figure %o', (fig) => {
+    const typ = typicalFigure(fig)
+    const t: FitTarget = { height: fig.height }
+    for (const k of Object.keys(FIT_LOCAL) as FitKey[]) t[k] = typ[k]
+    const r = fitBody(body, t)
+    // Main girths within 1 cm, as the plan asks.
+    for (const k of ['bust', 'waist', 'hips'] as const) expect(Math.abs(r.measured[k] - t[k]!)).toBeLessThan(10)
+    // The rest within 1,5 cm.
+    for (const k of ['neck', 'upperArm', 'thigh', 'backLength'] as const) expect(Math.abs(r.measured[k] - t[k]!)).toBeLessThan(15)
+    // Shoulder within 2,5 cm (the shoulder point is less sharp). Under the
+    // bust within 5 cm: a large bust−underbust difference is past what the
+    // cup size of Anny reaches.
+    expect(Math.abs(r.measured.shoulderLength - t.shoulderLength!)).toBeLessThan(25)
+    expect(Math.abs(r.measured.underbust - t.underbust!)).toBeLessThan(50)
   })
 
   it('fits height only when no girths are given', () => {

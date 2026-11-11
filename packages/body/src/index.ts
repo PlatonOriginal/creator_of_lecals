@@ -1,3 +1,5 @@
 export * from './anny'
 export * from './measure'
 export * from './fit'
+export * from './landmarks'
+export * from './plane'
