@@ -1,4 +1,5 @@
-import { Line, add, along, circlesX, dist, lineX, mid, mul, norm, rotate, sub, through, toPiece, v, type Vec } from '../../draft/geom'
+import { Line, poly, add, along, circlesX, dist, lineX, mid, mul, norm, rotate, sub, through, v, type Vec } from '../../draft/geom'
+import { Outline, netPiece, type FishDart, type Panel } from '../../pattern/panel'
 import { calc, check, type BlockDef, type BlockResult, type CalcStep, type Silhouette } from '../types'
 
 /**
@@ -122,6 +123,7 @@ export const mullerDress: BlockDef<MullerDressOptions> = {
   id: 'muller-dress',
   title: 'Платье с втачным рукавом',
   method: 'muller',
+  garment: 'dress',
   required: MULLER_DRESS_REQUIRED,
   options: [
     { id: 'backEase', title: 'Прибавка к ширине спины', min: 0, max: 20, step: 1, hint: 'В книге 0–0,5 см.' },
@@ -164,11 +166,6 @@ function mirror(p: Vec, a: Vec, b: Vec): Vec {
   return sub(mul(f, 2), p)
 }
 
-const poly = (pts: Vec[]) => {
-  const l = new Line(pts[0]!)
-  for (const p of pts.slice(1)) l.to(p)
-  return l
-}
 const plen = (pts: Vec[]) => pts.slice(1).reduce((s, p, i) => s + dist(pts[i]!, p), 0)
 
 /** Cut a polyline at arc length s from its start: [head, tail] sharing the cut point. */
@@ -349,38 +346,47 @@ export function draftMullerDress(m: M, o: MullerDressOptions): BlockResult {
   // Back neck
   const backNeck = new Line(P1).smooth(v(1, 0), v(0.35, -1), P16a, 0.5)
 
-  const backOutline = new Line(P8)
+  const backEdges = new Outline(P8, 'cb')
     .to(P7)
     .to(P6)
     .to(P1)
+    .edge('neck')
     .append(backNeck)
+    .edge('shoulder')
     .to(P)
-    .to(T)
-    .to(Pr)
+    .dart('shoulder', T, Pr, 'a')
     .to(P19r)
+    .edge('armhole')
     .append(poly(backArmFinal))
+    .edge('side')
     .append(through([S, backWaistSide, backHipSide], v(0, 1), v(0, 1)))
     .to(v(backHipSide.x, Di))
-    .to(P8)
+    .edge('hem')
+    .close()
 
   const frontNeck = through([P30a, add(N, mul(dn, 0.5)), P31], v(0, 1), v(1, 0))
-  const frontOutline = new Line(P31)
+  const frontEdges = new Outline(P31, 'cf', 'fold')
     .to(v(x13, Di))
+    .edge('hem')
     .to(v(frontHipSide.x, Di))
+    .edge('side')
     .to(frontHipSide)
     .append(through([frontHipSide, frontWaistSide, S], v(0, -1), v(0, -1)))
+    .edge('armhole')
     .append(poly([...frontArm].reverse()))
+    .edge('shoulder')
     .to(P32a)
-    .to(P26)
-    .to(P33a)
+    .dart('bust', P26, P33a, 'b', 20)
     .to(P30a)
+    .edge('neck')
     .append(frontNeck)
+    .close()
 
-  // Waist darts (marks), diamond shape.
-  const diamond = (x: number, w: number, top: Vec, bottom: Vec) =>
-    new Line(top).to(v(x - w / 2, yW)).to(bottom).to(v(x + w / 2, yW)).to(top)
-  const backDartLine = diamond(xBD, backDart, v(xBD, yW - 150), v(xBD, yW + 150))
-  const frontDartLine = diamond(x14, frontDart, P26, v(x14, yW + 150))
+  // Waist darts inside the pieces, diamond shape.
+  const fish = (x: number, w: number, top: Vec, bottom: Vec): FishDart =>
+    ({ id: 'waist', top, left: v(x - w / 2, yW), bottom, right: v(x + w / 2, yW) })
+  const backFish = fish(xBD, backDart, v(xBD, yW - 150), v(xBD, yW + 150))
+  const frontFish = fish(x14, frontDart, P26, v(x14, yW + 150))
 
   const shoulderBackSeam = dist(P16a, P) + dist(Pr, P19r)
   const shoulderFrontSeam = dist(P30a, P33a) + dist(P32a, P27a)
@@ -466,80 +472,86 @@ export function draftMullerDress(m: M, o: MullerDressOptions): BlockResult {
   const dxS = x13 + 120 + (fS.x < 0 ? -fS.x : 0)
   const dyS = yChest - Vok
   const place = (q: Vec) => v(q.x + dxS, q.y + dyS)
-  const sleeveOutline = poly(
-    [
-      fS,
-      ...lowerFront.map(mA).reverse().slice(1),
-      ...top.points(24).slice(1),
-      ...lowerBack.map(mC).reverse().slice(1),
-      bJ1,
-      tipE,
-      bJ2,
-      bH,
-      s17,
-      s14,
-      fH,
-      fJ,
-    ].map(place),
-  )
-  sleeveOutline.to(place(fS))
+  const capPts = [
+    fS,
+    ...lowerFront.map(mA).reverse().slice(1),
+    ...top.points(24).slice(1),
+    ...lowerBack.map(mC).reverse().slice(1),
+  ].map(place)
+  const sleeveEdges = new Outline(capPts[0]!, 'cap')
+    .append(poly(capPts))
+    .edge('seamBack')
+    .to(place(bJ1))
+    .dart('elbow', place(tipE), place(bJ2), 'b')
+    .to(place(bH))
+    .edge('hem')
+    .to(place(s17))
+    .to(place(s14))
+    .to(place(fH))
+    .edge('seamFront')
+    .to(place(fJ))
+    .close()
 
-  const front = toPiece({
+  const levels = { chest: yChest, waist: yW, hip: Vb }
+  const front: Panel = {
     id: 'muller-dress-front',
     title: 'Полочка',
-    outline: frontOutline,
-    extra: [
-      { role: 'mark', line: frontDartLine },
-      { role: 'mark', line: new Line(v(x11, Vb)).to(v(x13, Vb)) },
-    ],
-    fold: [P31, v(x13, Di)],
+    role: 'front',
+    method: 'Мюллер',
+    edges: frontEdges,
+    fish: [frontFish],
+    marks: [{ role: 'mark', line: new Line(v(x11, Vb)).to(v(x13, Vb)) }],
     grain: [v(x14 - 30, yW + 60), v(x14 - 30, Di - 80)],
-    labels: [
-      { at: v(x12 + 10, yW + 200), text: 'Полочка', size: 7 },
-      { at: v(x12 + 10, yW + 212), text: 'Крой 1 со сгибом' },
-      { at: v(x12 + 10, yW + 222), text: 'Мюллер · без припусков' },
-    ],
+    cut: 'Крой 1 со сгибом',
+    labelAt: v(x12 + 10, yW + 200),
+    notes: [],
+    levels,
+    notches: [],
     seams: { shoulder: shoulderFrontSeam, side: sideFront, armhole: frontArmLen },
-  })
-  const back = toPiece({
+  }
+  const back: Panel = {
     id: 'muller-dress-back',
     title: 'Спинка',
-    outline: backOutline,
-    extra: [
-      { role: 'mark', line: backDartLine },
-      { role: 'mark', line: new Line(v(20, Vb)).to(v(x11, Vb)) },
-    ],
+    role: 'back',
+    method: 'Мюллер',
+    edges: backEdges,
+    fish: [backFish],
+    marks: [{ role: 'mark', line: new Line(v(20, Vb)).to(v(x11, Vb)) }],
     grain: [v(xBD + 40, yW + 60), v(xBD + 40, Di - 80)],
-    labels: [
-      { at: v(40, yW + 200), text: 'Спинка', size: 7 },
-      { at: v(40, yW + 212), text: 'Крой 2 (шов посередине)' },
-      { at: v(40, yW + 222), text: 'Мюллер · без припусков' },
-    ],
+    cut: 'Крой 2 (шов посередине)',
+    labelAt: v(40, yW + 200),
+    notes: [],
+    levels,
+    notches: [],
     seams: { shoulder: shoulderBackSeam, side: sideBack, armhole: backArmLen },
-  })
-  const sleeve = toPiece({
+  }
+  const sleeve: Panel = {
     id: 'muller-dress-sleeve',
     title: 'Рукав',
-    outline: sleeveOutline,
-    extra: [
+    role: 'sleeve',
+    method: 'Мюллер',
+    edges: sleeveEdges,
+    fish: [],
+    marks: [
       { role: 'mark', line: poly([sAe, s15, s14].map(place)) },
       { role: 'mark', line: poly([s12, s16, s17].map(place)) },
       { role: 'mark', line: new Line(place(v(fS.x, Vok))).to(place(v(bS.x, Vok))) },
     ],
     grain: [place(v(x6 / 2, Vok + 60)), place(v(x6 / 2, L - 100))],
-    labels: [
-      { at: place(v(x6 * 0.15, Vok + 150)), text: 'Рукав', size: 7 },
-      { at: place(v(x6 * 0.15, Vok + 162)), text: 'Крой 2' },
-      { at: place(v(x6 * 0.15, Vok + 172)), text: 'Мюллер · без припусков' },
-    ],
+    cut: 'Крой 2',
+    labelAt: place(v(x6 * 0.15, Vok + 150)),
+    notes: [],
+    levels: { chest: place(v(0, Vok)).y, elbow: place(v(0, y5)).y },
+    notches: [],
     seams: { cap, seam: seamFront },
-  })
+  }
 
   if (cap - armhole < 0) warnings.push('Окат рукава короче проймы: проверьте мерки руки и проймы.')
   if (cap - armhole > 70) warnings.push(`Посадка оката ${fmt(cap - armhole)}: для платья много, увеличьте «Уменьшение оката».`)
 
   return {
-    pieces: [back, front, sleeve],
+    panels: [back, front, sleeve],
+    pieces: [back, front, sleeve].map(netPiece),
     points: {
       P1, P6, P7, P8, P15, P16, P16a, P17, P18, P19, P19a, P20, P21,
       P22, P23, P24, P25, P26, P27, P27a, P28, P29, P30, P30a, P31, P32, P32a, P33, P33a,

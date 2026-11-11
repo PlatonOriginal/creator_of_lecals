@@ -137,6 +137,164 @@ export class Line {
     }
     return r
   }
+  /** Start point of segment i. */
+  segStart(i: number): Vec {
+    return i === 0 ? this.start : this.segs[i - 1]!.to
+  }
+  /** Lengths of the segments. */
+  segLengths(): number[] {
+    return this.segs.map((s, i) => {
+      const a = this.segStart(i)
+      return s.kind === 'L' ? dist(a, s.to) : bezierLength(a, s.c1, s.c2, s.to, 64)
+    })
+  }
+  /** Location (segment index and parameter) at arc length d from the start. */
+  locate(d: number): { i: number; t: number } {
+    const lens = this.segLengths()
+    let acc = 0
+    for (let i = 0; i < lens.length; i++) {
+      const l = lens[i]!
+      if (d <= acc + l || i === lens.length - 1) {
+        const s = this.segs[i]!
+        const local = Math.min(Math.max(d - acc, 0), l)
+        if (s.kind === 'L' || l === 0) return { i, t: l === 0 ? 0 : local / l }
+        return { i, t: bezierTAtLength(this.segStart(i), s.c1, s.c2, s.to, local) }
+      }
+      acc += l
+    }
+    return { i: 0, t: 0 }
+  }
+  pointAt(i: number, t: number): Vec {
+    const s = this.segs[i]
+    if (!s) return this.start
+    const a = this.segStart(i)
+    return s.kind === 'L' ? lerp(a, s.to, t) : bezier(a, s.c1, s.c2, s.to, t)
+  }
+  /** Unit tangent at segment i, parameter t. */
+  tangentAt(i: number, t: number): Vec {
+    const s = this.segs[i]
+    if (!s) return v(1, 0)
+    const a = this.segStart(i)
+    if (s.kind === 'L') return norm(sub(s.to, a))
+    const d = bezierDeriv(a, s.c1, s.c2, s.to, t)
+    if (Math.hypot(d.x, d.y) > 1e-9) return norm(d)
+    return norm(sub(s.to, a))
+  }
+  pointAtLength(d: number): Vec {
+    const { i, t } = this.locate(d)
+    return this.pointAt(i, t)
+  }
+  /** Split at segment i, parameter t: [head, tail]. */
+  splitAt(i: number, t: number): [Line, Line] {
+    const head = new Line(this.start)
+    head.segs.push(...this.segs.slice(0, i))
+    const s = this.segs[i]
+    if (!s) return [head, new Line(this.end)]
+    const a = this.segStart(i)
+    let tail: Line
+    if (s.kind === 'L') {
+      const m = lerp(a, s.to, t)
+      if (t > 0) head.to(m)
+      tail = new Line(m)
+      if (t < 1) tail.to(s.to)
+    } else {
+      const [h, k] = splitBezier(a, s.c1, s.c2, s.to, t)
+      if (t > 0) head.curve(h[1], h[2], h[3])
+      tail = new Line(k[0])
+      if (t < 1) tail.curve(k[1], k[2], k[3])
+    }
+    tail.segs.push(...this.segs.slice(i + 1))
+    return [head, tail]
+  }
+  splitAtLength(d: number): [Line, Line] {
+    const { i, t } = this.locate(d)
+    return this.splitAt(i, t)
+  }
+  /** Part between arc lengths d0 < d1. */
+  slice(d0: number, d1: number): Line {
+    const [, tail] = this.splitAtLength(d0)
+    return tail.splitAtLength(d1 - d0)[0]
+  }
+  /** Nearest point of the line to p: arc length from the start and the distance. */
+  project(p: Vec, samples = 48): { s: number; q: Vec; d: number } {
+    let best = { s: 0, q: this.start, d: dist(p, this.start) }
+    let acc = 0
+    const lens = this.segLengths()
+    this.segs.forEach((seg, i) => {
+      const a = this.segStart(i)
+      const n = seg.kind === 'L' ? 1 : samples
+      // Coarse search, then refine around the best sample.
+      let bt = 0
+      let bd = Infinity
+      for (let k = 0; k <= n; k++) {
+        const q = this.pointAt(i, k / n)
+        const dd = dist(p, q)
+        if (dd < bd) {
+          bd = dd
+          bt = k / n
+        }
+      }
+      if (seg.kind === 'L') {
+        const ab = sub(seg.to, a)
+        const l2 = ab.x * ab.x + ab.y * ab.y
+        bt = l2 === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / l2))
+      } else {
+        let lo = Math.max(0, bt - 1 / n)
+        let hi = Math.min(1, bt + 1 / n)
+        for (let k = 0; k < 30; k++) {
+          const m1 = lo + (hi - lo) / 3
+          const m2 = hi - (hi - lo) / 3
+          if (dist(p, this.pointAt(i, m1)) < dist(p, this.pointAt(i, m2))) hi = m2
+          else lo = m1
+        }
+        bt = (lo + hi) / 2
+      }
+      const q = this.pointAt(i, bt)
+      const dd = dist(p, q)
+      if (dd < best.d) {
+        const sAt = seg.kind === 'L' ? bt * lens[i]! : bezierLength(a, seg.c1, seg.c2, seg.to, 64, bt)
+        best = { s: acc + sAt, q, d: dd }
+      }
+      acc += lens[i]!
+    })
+    return best
+  }
+  /**
+   * Where the line crosses the infinite line through `p` with direction `dir`:
+   * locations sorted along this line.
+   */
+  crossings(p: Vec, dir: Vec): { i: number; t: number; at: Vec }[] {
+    const n = v(-dir.y, dir.x)
+    const side = (q: Vec) => (q.x - p.x) * n.x + (q.y - p.y) * n.y
+    const out: { i: number; t: number; at: Vec }[] = []
+    this.segs.forEach((seg, i) => {
+      const steps = seg.kind === 'L' ? 1 : 32
+      let t0 = 0
+      let f0 = side(this.pointAt(i, 0))
+      for (let k = 1; k <= steps; k++) {
+        const t1 = k / steps
+        const f1 = side(this.pointAt(i, t1))
+        if ((f0 < 0 && f1 >= 0) || (f0 > 0 && f1 <= 0) || (f0 === 0 && k === 1 && i === 0)) {
+          let lo = t0
+          let hi = t1
+          let flo = f0
+          for (let it = 0; it < 40 && f0 !== 0; it++) {
+            const m = (lo + hi) / 2
+            const fm = side(this.pointAt(i, m))
+            if ((flo < 0) === (fm < 0)) {
+              lo = m
+              flo = fm
+            } else hi = m
+          }
+          const t = f0 === 0 ? t0 : (lo + hi) / 2
+          if (!out.some((o) => o.i === i && Math.abs(o.t - t) < 1e-6)) out.push({ i, t, at: this.pointAt(i, t) })
+        }
+        t0 = t1
+        f0 = f1
+      }
+    })
+    return out
+  }
   d(close = false): string {
     const f = (p: Vec) => `${round(p.x)},${round(p.y)}`
     let s = `M ${f(this.start)}`
@@ -155,11 +313,47 @@ export function bezier(a: Vec, c1: Vec, c2: Vec, b: Vec, t: number): Vec {
   )
 }
 
-export function bezierLength(a: Vec, c1: Vec, c2: Vec, b: Vec, n = 200): number {
-  let len = 0
+export function bezierDeriv(a: Vec, c1: Vec, c2: Vec, b: Vec, t: number): Vec {
+  const u = 1 - t
+  return v(
+    3 * u * u * (c1.x - a.x) + 6 * u * t * (c2.x - c1.x) + 3 * t * t * (b.x - c2.x),
+    3 * u * u * (c1.y - a.y) + 6 * u * t * (c2.y - c1.y) + 3 * t * t * (b.y - c2.y),
+  )
+}
+
+/** De Casteljau split of a cubic at t. */
+export function splitBezier(a: Vec, c1: Vec, c2: Vec, b: Vec, t: number): [[Vec, Vec, Vec, Vec], [Vec, Vec, Vec, Vec]] {
+  const p01 = lerp(a, c1, t)
+  const p12 = lerp(c1, c2, t)
+  const p23 = lerp(c2, b, t)
+  const p012 = lerp(p01, p12, t)
+  const p123 = lerp(p12, p23, t)
+  const m = lerp(p012, p123, t)
+  return [
+    [a, p01, p012, m],
+    [m, p123, p23, b],
+  ]
+}
+
+/** Parameter t at which the cubic has arc length `len` from its start. */
+export function bezierTAtLength(a: Vec, c1: Vec, c2: Vec, b: Vec, len: number, n = 128): number {
+  let acc = 0
   let p = a
   for (let i = 1; i <= n; i++) {
     const q = bezier(a, c1, c2, b, i / n)
+    const d = dist(p, q)
+    if (acc + d >= len) return (i - 1 + (d === 0 ? 0 : (len - acc) / d)) / n
+    acc += d
+    p = q
+  }
+  return 1
+}
+
+export function bezierLength(a: Vec, c1: Vec, c2: Vec, b: Vec, n = 200, upTo = 1): number {
+  let len = 0
+  let p = a
+  for (let i = 1; i <= n; i++) {
+    const q = bezier(a, c1, c2, b, (i / n) * upTo)
     len += dist(p, q)
     p = q
   }
@@ -231,4 +425,45 @@ export function toPiece(p: PieceDraft): Piece {
     bbox.minY = Math.min(bbox.minY, l.y - l.size)
   }
   return { id: p.id, title: p.title, paths, labels, bbox, seams: p.seams }
+}
+
+/** Mirror p about the line through a and b. */
+export function reflect(p: Vec, a: Vec, b: Vec): Vec {
+  const u = norm(sub(b, a))
+  const d = sub(p, a)
+  const t = d.x * u.x + d.y * u.y
+  return sub(mul(add(a, mul(u, t)), 2), p)
+}
+
+/** Polyline through the points. */
+export function poly(pts: Vec[]): Line {
+  const l = new Line(pts[0]!)
+  for (const p of pts.slice(1)) l.to(p)
+  return l
+}
+
+/** Signed area of a closed polygon (positive when counter-clockwise in a y-up frame). */
+export function signedArea(pts: Vec[]): number {
+  let s = 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]!
+    const b = pts[(i + 1) % pts.length]!
+    s += a.x * b.y - b.x * a.y
+  }
+  return s / 2
+}
+
+export function pointInPolygon(p: Vec, pts: Vec[]): boolean {
+  let inside = false
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i]!
+    const b = pts[j]!
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+/** Signed angle from vector a to vector b, degrees (positive = clockwise on screen). */
+export function angleBetween(a: Vec, b: Vec): number {
+  return (Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y) * 180) / Math.PI
 }
