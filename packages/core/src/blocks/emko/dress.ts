@@ -339,7 +339,7 @@ export function draftEmkoDress(m: M, o: EmkoDressOptions): BlockResult {
   const S14 = v(0.45 * SHOR, 0)
   const S141 = v(0.73 * SHOR, 0)
   const S141r = mirrorX(S141, SHOR)
-  const S345 = tangentPoint(S131, S342, rB, (a, b) => (a.x < b.x ? a : b))
+  const S345 = tangentPoint(S131, S342, rB, (a, b) => (a.y > b.y ? a : b))
   const S354 = tangentPoint(S141r, S343, rF, (a, b) => (a.y > b.y ? a : b))
   const S355 = lineX(S354, S141r, S15, S351)
   const S133r = lineX(S345, S131, S13, S15)

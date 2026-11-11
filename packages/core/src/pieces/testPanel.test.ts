@@ -20,8 +20,8 @@ describe('draftTestPanel', () => {
   })
 
   it('puts half of the waist excess into the dart', () => {
-    // excess = 250 - (175 + 5) = 70; dart = 35
-    expect(piece.seams.dartWidth).toBeCloseTo(35, 5)
+    // excess = 250 - (676 / 4 + 5) = 76; dart = 38
+    expect(piece.seams.dartWidth).toBeCloseTo(38, 5)
   })
 
   it('recomputes from measurements', () => {
