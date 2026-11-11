@@ -132,7 +132,7 @@ button {
 .zoom-tools button.secondary { color: var(--accent); }
 .zoom-tools button:disabled { opacity: 0.4; cursor: default; }
 .zoom-tools .num { min-width: 52px; text-align: center; font-size: 13px; color: var(--muted); }
-.zoom-box { overflow: hidden; touch-action: pan-y; cursor: zoom-in; height: min(70vh, 760px); min-height: 260px; }
+.zoom-box { overflow: hidden; touch-action: pan-y; cursor: zoom-in; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; height: min(70vh, 760px); min-height: 260px; }
 .zoom-box.zoomed { touch-action: none; cursor: grab; }
 .zoom-box.zoomed:active { cursor: grabbing; }
 .zoom-content { transform-origin: 0 0; width: 100%; height: 100%; }
