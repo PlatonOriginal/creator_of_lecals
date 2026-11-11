@@ -46,6 +46,8 @@ interface OffSeg {
   q: Vec
   /** A line given by two points only (dart caps, mirrored corners): no miter limit. */
   free?: boolean
+  /** Longest corner spike allowed next to this line, mm (mirrored hem corners). */
+  cap?: number
 }
 
 const cross = (a: Vec, b: Vec) => a.x * b.y - a.y * b.x
@@ -148,7 +150,7 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
       const last = groups[groups.length - 1]!
       const hemDir = next.line.tangentAt(0, 0)
       const H0 = next.line.start
-      groups.push([reflectSeg(last[last.length - 1]!, H0, add(H0, hemDir))])
+      groups.push([{ ...reflectSeg(last[last.length - 1]!, H0, add(H0, hemDir)), cap: 2 * allowanceOf(next, allow) + aE }])
     }
     if (e.kind === 'seam' && prevE.kind === 'hem' && aE > 0 && allowanceOf(prevE, allow) > 0 &&
         !square(e.line.tangentAt(0, 0), prevE.line.tangentAt(prevE.line.segs.length - 1, 1))) {
@@ -157,7 +159,7 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
       const hemDir = prevE.line.tangentAt(ls, 1)
       const H1 = prevE.line.end
       // Insert before this edge's offsets.
-      groups.splice(groups.length - 1, 0, [reflectSeg(first, H1, add(H1, hemDir))])
+      groups.splice(groups.length - 1, 0, [{ ...reflectSeg(first, H1, add(H1, hemDir)), cap: 2 * allowanceOf(prevE, allow) + aE }])
     }
   }
 
@@ -175,7 +177,8 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
     // Miter limit: a very sharp corner is cut off instead of a long spike.
     const ref = ends.length ? ends : [x]
     const d = Math.min(...ref.map((r) => dist(x, r)))
-    const limit = s.free || t.free ? 150 : Math.max(25, 3 * Math.max(dist(s.p, s.q), dist(t.p, t.q)))
+    const cap = Math.min(s.cap ?? Infinity, t.cap ?? Infinity)
+    const limit = Number.isFinite(cap) ? cap : s.free || t.free ? 150 : Math.max(25, 3 * Math.max(dist(s.p, s.q), dist(t.p, t.q)))
     if (d > limit) out.push(...ends)
     else out.push(x)
   }
