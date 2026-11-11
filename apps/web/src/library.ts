@@ -1,4 +1,4 @@
-import type { Allowances, ModelSpec, Silhouette } from '@lecals/core'
+import type { Allowances, FittingEntry, ModelSpec, Silhouette } from '@lecals/core'
 import type { Figure } from './figureStore'
 
 /**
@@ -31,8 +31,8 @@ export interface ModelDoc {
 }
 
 const DB = 'lecals'
-const VERSION = 1
-type Store = 'figures' | 'models'
+const VERSION = 2
+type Store = 'figures' | 'models' | 'fittings'
 
 let dbp: Promise<IDBDatabase> | undefined
 
@@ -43,8 +43,17 @@ function open(): Promise<IDBDatabase> {
       const db = req.result
       if (!db.objectStoreNames.contains('figures')) db.createObjectStore('figures', { keyPath: 'id' })
       if (!db.objectStoreNames.contains('models')) db.createObjectStore('models', { keyPath: 'id' })
+      // v2 (M5): the fitting log.
+      if (!db.objectStoreNames.contains('fittings')) db.createObjectStore('fittings', { keyPath: 'id' })
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      // Another tab opened a newer version: let it upgrade.
+      req.result.onversionchange = () => {
+        req.result.close()
+        dbp = undefined
+      }
+      resolve(req.result)
+    }
     req.onerror = () => reject(req.error ?? new Error('IndexedDB недоступна'))
   })
   return dbp
@@ -71,5 +80,10 @@ export const listModels = () =>
   run<ModelDoc[]>('models', 'readonly', (s) => s.getAll()).then((l) => l.sort((a, b) => b.updated - a.updated))
 export const putModel = (d: ModelDoc) => run<IDBValidKey>('models', 'readwrite', (s) => s.put(d))
 export const deleteModel = (id: string) => run<undefined>('models', 'readwrite', (s) => s.delete(id))
+
+export const listFittings = () =>
+  run<FittingEntry[]>('fittings', 'readonly', (s) => s.getAll()).then((l) => l.sort((a, b) => b.updated - a.updated))
+export const putFitting = (d: FittingEntry) => run<IDBValidKey>('fittings', 'readwrite', (s) => s.put(d))
+export const deleteFitting = (id: string) => run<undefined>('fittings', 'readwrite', (s) => s.delete(id))
 
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
