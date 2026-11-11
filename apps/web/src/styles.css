@@ -292,3 +292,42 @@ details summary { cursor: pointer; font-size: 14px; color: var(--accent); margin
 main, .page, .page > * { min-width: 0; }
 .field select { min-width: 0; text-overflow: ellipsis; }
 .field > span:first-child { min-width: 0; }
+
+/* M4: mannequin views, ease map */
+.views {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  pointer-events: none;
+}
+.views button {
+  pointer-events: auto;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.band-label {
+  background: rgba(255, 255, 255, 0.92);
+  color: #222;
+  border: 2px solid;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin-bottom: 8px; }
+.toggles label { display: flex; align-items: center; gap: 6px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+.fit.ease td:last-child { white-space: nowrap; }
+.fit .verdict { font-size: 11px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 8px 0; }
+.fit .typical { color: var(--muted); }

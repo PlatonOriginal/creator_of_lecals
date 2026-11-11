@@ -190,7 +190,9 @@ function applySpec(block: { garment: GarmentKind }, base: BlockResult, spec: Mod
         }
       }
       q = side(q)
-      if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, p.fish.length ? pivot : (p.levels.waist ?? pivot))
+      // From the hip line, like the side seams: pivoting at the waist straightened
+      // the princess seam over the hips and took up to 3 cm off the hip girth.
+      if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, pivot)
       return [q]
     })
     if (goresUsed > 1)

@@ -28,7 +28,7 @@ export function App() {
     <div className="app">
       <header className="header">
         <h1>Создатель выкроек</h1>
-        <span className="badge">прототип M3</span>
+        <span className="badge">прототип M4</span>
       </header>
       <nav className="tabs">
         {TABS.map((t) => (
@@ -55,7 +55,7 @@ export function App() {
               }}
             />
           )}
-          {tab === 'body' && <BodyPage figure={figure} onChange={setFigure} onOpenMeasurements={() => setTab('measure')} />}
+          {tab === 'body' && <BodyPage figure={figure} onChange={setFigure} onOpenMeasurements={() => setTab('measure')} model={model} />}
         </Suspense>
       </main>
     </div>

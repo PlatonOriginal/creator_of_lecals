@@ -125,8 +125,34 @@ export class AnnyBody {
     return out
   }
 
+  /**
+   * Vertices a local change moves the most (at least `share` of its largest
+   * shift): a fixed set of vertices that marks that place on any body
+   * (the neck ring, the upper-arm ring…).
+   */
+  localRegion(label: string, share = 0.3): number[] {
+    const entry = this.meta.localChanges.find((e) => e.label === label && e.direction === 'incr')
+    if (!entry) return []
+    const mags: number[] = []
+    for (let j = 0; j < entry.count; j++) {
+      const d = (entry.offset + j) * 3
+      mags.push(Math.hypot(this.localDeltas[d]!, this.localDeltas[d + 1]!, this.localDeltas[d + 2]!))
+    }
+    const top = Math.max(...mags)
+    const out: number[] = []
+    for (let j = 0; j < entry.count; j++) if (mags[j]! >= share * top) out.push(this.localIndices[entry.offset + j]!)
+    return out
+  }
+
   /** Rest-pose vertex positions (metres, y up) for the given body parameters. */
   restVertices(phenotypes: Phenotypes, localChanges: LocalChanges = {}, out?: Float32Array): Float32Array {
+    const result = this.phenotypeVertices(phenotypes, out)
+    this.addLocalChanges(result, localChanges)
+    return result
+  }
+
+  /** The body for the phenotypes alone, before the local changes. */
+  phenotypeVertices(phenotypes: Phenotypes, out?: Float32Array): Float32Array {
     const n3 = this.vertexCount * 3
     const result = out ?? new Float32Array(n3)
     result.set(this.template)
@@ -146,7 +172,14 @@ export class AnnyBody {
       const off = r * n3
       for (let i = 0; i < n3; i++) result[i]! += s * this.basis[off + i]!
     }
+    return result
+  }
 
+  /**
+   * Adds the local changes to the vertices in place. They are linear, so a
+   * fit can build the phenotype body once and only redo this cheap part.
+   */
+  addLocalChanges(result: Float32Array, localChanges: LocalChanges): void {
     for (const entry of this.meta.localChanges) {
       const v = localChanges[entry.label] ?? 0
       const w = entry.direction === 'incr' ? Math.max(v, 0) : Math.max(-v, 0)
@@ -160,7 +193,6 @@ export class AnnyBody {
         result[vi + 2]! += s * this.localDeltas[d + 2]!
       }
     }
-    return result
   }
 }
 
