@@ -94,6 +94,10 @@ function lengthLine(panels: Panel[], garment: GarmentKind): number | undefined {
 }
 
 export function applyModel(block: { garment: GarmentKind }, base: BlockResult, spec: ModelSpec, m: Partial<Measurements>): ModelResult {
+  return applyLayers(block, base, [spec], m)
+}
+
+function applySpec(block: { garment: GarmentKind }, base: BlockResult, spec: ModelSpec, m: Partial<Measurements>): ModelResult {
   const warnings: string[] = []
   let panels = base.panels
   const isBody = (p: Panel) => p.role === 'front' || p.role === 'back'
@@ -200,8 +204,7 @@ export function applyModel(block: { garment: GarmentKind }, base: BlockResult, s
     panels = [...panels, ...extra]
   }
 
-  panels = matchNotches(panels, base, spec.sleeve?.puffCap ?? 0)
-  return { panels, checks: modelChecks(panels, base), warnings }
+  return { panels, checks: [], warnings }
 }
 
 /** Matching seams after modelling. */
@@ -264,4 +267,22 @@ export function matchNotches(panels: Panel[], base: BlockResult, puffCap = 0): P
     }
     return q
   })
+}
+
+/**
+ * A model built on another model («взять модель как основу»): the layers are
+ * applied one after another, each on the pieces the previous one produced.
+ */
+export function applyLayers(block: { garment: GarmentKind }, base: BlockResult, layers: ModelSpec[], m: Partial<Measurements>): ModelResult {
+  let cur: BlockResult = base
+  const warnings: string[] = []
+  let puff = 0
+  for (const layer of layers) {
+    const res = applySpec(block, cur, layer, m)
+    warnings.push(...res.warnings)
+    cur = { ...cur, panels: res.panels }
+    puff += layer.sleeve?.puffCap ?? 0
+  }
+  const panels = matchNotches(cur.panels, base, puff)
+  return { panels, checks: modelChecks(panels, base), warnings }
 }

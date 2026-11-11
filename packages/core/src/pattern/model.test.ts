@@ -3,7 +3,7 @@ import { BLOCKS } from '../blocks'
 import { GOST_FIGURES, SAMPLE_MEASUREMENTS, typicalFigure } from '../measurements'
 import { angleBetween, dist, sub } from '../draft/geom'
 import { edgeLengths, type Panel } from './panel'
-import { applyModel, type ModelSpec } from './model'
+import { applyLayers, applyModel, type ModelSpec } from './model'
 import { changeLength, hemY, positionOn, transferDart } from './ops'
 import { cutLine, DEFAULT_ALLOWANCES } from './allowance'
 
@@ -129,5 +129,19 @@ describe('длина и клёш', () => {
     for (let i = 0; i < p.edges.length; i++) {
       expect(dist(p.edges[i]!.line.end, p.edges[(i + 1) % p.edges.length]!.line.start)).toBeLessThan(1e-6)
     }
+  })
+})
+
+describe('модель как основа', () => {
+  it('слои применяются по очереди: рельефы из первой модели, длина из второй', () => {
+    const r = emkoDress.draft(SAMPLE_MEASUREMENTS, emkoDress.defaults('semi'))
+    const first = applyLayers(emkoDress, r, [{ princess: { front: true, back: false, from: 'armhole' } }], SAMPLE_MEASUREMENTS)
+    const both = applyLayers(emkoDress, r, [{ princess: { front: true, back: false, from: 'armhole' } }, { length: 70 }], SAMPLE_MEASUREMENTS)
+    expect(both.panels).toHaveLength(first.panels.length)
+    for (const [i, p] of both.panels.entries()) {
+      if (p.role === 'sleeve') continue
+      expect(hemY(p)).toBeCloseTo(hemY(first.panels[i]!) + 70, 3)
+    }
+    expect(both.checks.every((c) => c.ok)).toBe(true)
   })
 })
