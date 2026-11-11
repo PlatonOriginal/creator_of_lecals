@@ -630,39 +630,77 @@ export function dartsToHem(panel: Panel, share: number): Panel {
 export function slashFlare(panel: Panel, amount: number, count = 2): Panel {
   let p = clonePanel(panel)
   if (amount <= 0) return p
-  const pts = loopPoints(p.edges)
-  const hem = p.edges.filter((e) => e.id === 'hem')
+  const hem = p.edges.filter((e) => e.id === 'hem' && e.kind !== 'dart')
   const hx = hem.flatMap((e) => e.line.points(4)).map((q) => q.x)
   const x0 = Math.min(...hx)
   const x1 = Math.max(...hx)
-  void pts
+  // The slash lines are taken on the piece as drafted. They are opened one by
+  // one from the centre line outwards: each opening turns the part away from
+  // the centre, so the slashes still to open are turned with it.
+  const centre = p.edges.filter((e) => e.kind !== 'dart' && hasCentre([e])).flatMap((e) => e.line.points(4))
+  const cx = centre.length ? centre.reduce((a, q) => a + q.x, 0) / centre.length : x0
+  let slashes: { W: Vec; Q: Vec }[] = []
+  // A slash that falls into a dart mouth on the waist moves just beside the dart.
+  const mouths = p.edges
+    .filter((e) => e.kind === 'dart' && e.dart?.leg === 1 && e.id === 'waist')
+    .map((e) => {
+      const l2 = p.edges.find((o) => o.kind === 'dart' && o.dart?.id === e.dart!.id && o.dart.leg === 2)!
+      return [Math.min(e.line.start.x, l2.line.end.x), Math.max(e.line.start.x, l2.line.end.x)] as const
+    })
+  // The slashes are spread evenly over the waist and over the hem.
+  const wx = p.edges.filter((e) => e.id === 'waist' && e.kind !== 'dart').flatMap((e) => e.line.points(4)).map((q) => q.x)
+  const w0 = Math.min(...wx)
+  const w1 = Math.max(...wx)
   for (let j = 1; j <= count; j++) {
-    const x = x0 + ((x1 - x0) * j) / (count + 1)
+    let x = w0 + ((w1 - w0) * j) / (count + 1)
+    const m = mouths.find(([a, b]) => x > a - 10 && x < b + 10)
+    if (m) x = x - m[0] < m[1] - x ? m[0] - 10 : m[1] + 10
     const W = crossingOn(p, 'waist', x)
-    const Q = crossingOn(p, 'hem', x)
-    if (!W || !Q) continue
-    // A hinge at the waist point: a zero dart there, then turned open.
+    const Q = crossingOn(p, 'hem', x0 + ((x1 - x0) * j) / (count + 1))
+    if (W && Q) slashes.push({ W: W.at, Q: Q.at })
+  }
+  slashes.sort((a, b) => Math.abs(a.W.x - cx) - Math.abs(b.W.x - cx))
+  for (let j = 0; j < slashes.length; j++) {
+    const sl = slashes[j]!
+    const W = nearestOn(p, 'waist', sl.W)
+    if (!W || W.d > 1) continue
     const sw = splitEdge(p.edges, W.i, W.s)
     let edges = sw.edges
     const Wp = edges[sw.second]!.line.start
     const wi = sw.second
+    const id = `flare${j + 1}`
     edges = [
       ...edges.slice(0, wi),
-      { id: `flare${j}`, kind: 'dart', line: new Line(Wp).to(add(Wp, v(0, 1e-3))), dart: { id: `flare${j}`, leg: 1, press: 'a' } },
-      { id: `flare${j}`, kind: 'dart', line: new Line(add(Wp, v(0, 1e-3))).to(Wp), dart: { id: `flare${j}`, leg: 2, press: 'a' } },
+      { id, kind: 'dart', line: new Line(Wp).to(add(Wp, v(0, 1e-3))), dart: { id, leg: 1, press: 'a' } },
+      { id, kind: 'dart', line: new Line(add(Wp, v(0, 1e-3))).to(Wp), dart: { id, leg: 2, press: 'a' } },
       ...edges.slice(wi),
     ]
     p = { ...p, edges }
-    const q2 = crossingOn(p, 'hem', x)!
-    const r = dist(Wp, Q.at)
-    const ang = (Math.asin(Math.min(0.9, amount / count / r)) * 180) / Math.PI
-    p = openHinge(p, `flare${j}`, q2, ang)
+    const Q = nearestOn(p, 'hem', sl.Q)
+    if (!Q || Q.d > 1) continue
+    const r = dist(Wp, sl.Q)
+    // The hem opens by the chord 2·r·sin(ang/2) = amount / count.
+    const ang = (2 * Math.asin(Math.min(0.7, amount / count / 2 / r)) * 180) / Math.PI
+    const opened = openHinge(p, id, Q, ang)
+    p = opened.panel
+    slashes = slashes.map((o, k) => (k > j ? { W: opened.f(o.W), Q: opened.f(o.Q) } : o))
   }
   return smoothHem(p)
 }
 
+/** The point of edge `id` nearest to `q`. */
+function nearestOn(p: Panel, id: string, q: Vec): { i: number; s: number; d: number } | undefined {
+  let best: { i: number; s: number; d: number } | undefined
+  p.edges.forEach((e, i) => {
+    if (e.id !== id || e.kind === 'dart') return
+    const pr = e.line.project(q)
+    if (!best || pr.d < best.d) best = { i, s: pr.s, d: pr.d }
+  })
+  return best
+}
+
 /** Open a slash from the hem point `to` up to the hinge dart `id` by `ang` degrees. */
-function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: number): Panel {
+function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: number): { panel: Panel; f: (q: Vec) => Vec } {
   const p = clonePanel(panel)
   const split = splitEdge(p.edges, to.i, to.s)
   let edges = split.edges
@@ -672,15 +710,20 @@ function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: 
   const C = chain(edges, i + 2, split.second - 1)
   const D = chain(edges, split.second, i - 1)
   const rotC = !hasCentre(C) || (hasCentre(D) && C.length <= D.length)
-  const poly = loopPoints(edges)
-  // Turn so that the hem opens (moves away from the other part).
-  const sign = (part: Edge[], a: number) => {
-    const probe = rotate(Q, a, W)
-    return pointInPolygon(probe, poly) === false && pointInPolygon(probe, loopPoints(part)) === false
+  // Turn so that the hem opens: the turning part moves away from the fixed one.
+  const centroid = (part: Edge[]) => {
+    const q = loopPoints(part)
+    return mul(q.reduce((a, b) => add(a, b), v(0, 0)), 1 / q.length)
   }
+  const sign = (part: Edge[], a: number) => {
+    const fixed = centroid(part === C ? D : C)
+    const c = centroid(part)
+    return dist(rotate(c, a, W), fixed) >= dist(rotate(c, -a, W), fixed)
+  }
+  let f: (q: Vec) => Vec
   if (rotC) {
     const a = sign(C, ang) ? ang : -ang
-    const f = (q: Vec) => rotate(q, a, W)
+    f = (q: Vec) => rotate(q, a, W)
     moveInside(p, [W, ...loopPoints(C)], f)
     edges = [
       ...C.map((e) => mapEdge(e, f)),
@@ -690,7 +733,7 @@ function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: 
     ]
   } else {
     const a = sign(D, ang) ? ang : -ang
-    const f = (q: Vec) => rotate(q, a, W)
+    f = (q: Vec) => rotate(q, a, W)
     moveInside(p, [W, ...loopPoints(D)], f)
     edges = [
       ...C,
@@ -700,7 +743,7 @@ function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: 
     ]
   }
   p.edges = mergeSame(stitch(edges))
-  return p
+  return { panel: p, f }
 }
 
 // ---------------------------------------------------------------------------
