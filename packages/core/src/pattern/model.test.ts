@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { BLOCKS } from '../blocks'
 import { GOST_FIGURES, SAMPLE_MEASUREMENTS, typicalFigure } from '../measurements'
-import { angleBetween, dist, sub } from '../draft/geom'
-import { edgeLengths, type Panel } from './panel'
+import { angleBetween, dist, sub, type Vec } from '../draft/geom'
+import { edgeLengths, outlineOf, type Panel } from './panel'
 import { applyLayers, applyModel, type ModelSpec } from './model'
 import { changeLength, hemY, positionOn, transferDart } from './ops'
 import { cutLine, DEFAULT_ALLOWANCES } from './allowance'
@@ -114,6 +114,26 @@ describe('длина и клёш', () => {
     expect(res.checks.every((c) => c.ok)).toBe(true)
   })
 
+  it('клёш разрезами: обе юбки, с вытачками, контур не перекручивается', () => {
+    for (const id of ['emko-skirt', 'muller-skirt']) {
+      const b = byId(id)
+      for (const sil of ['straight', 'semi'] as const) {
+        const r = b.draft(SAMPLE_MEASUREMENTS, b.defaults(sil))
+        for (const slashes of [50, 150, 550]) {
+          const base = applyModel(b, r, { flare: { darts: 0.1, side: 20, princess: 0, slashes: 0 } }, SAMPLE_MEASUREMENTS)
+          const res = applyModel(b, r, { flare: { darts: 0.1, side: 20, princess: 0, slashes } }, SAMPLE_MEASUREMENTS)
+          for (const [i, p] of res.panels.entries()) {
+            const added = edgeLengths(p).hem! - edgeLengths(base.panels[i]!).hem!
+            expect(added, `${id} ${sil} ${slashes} ${p.id}`).toBeGreaterThan(slashes * 0.9)
+            expect(added, `${id} ${sil} ${slashes} ${p.id}`).toBeLessThan(slashes * 1.3)
+            expect(selfCrossings(p), `${id} ${sil} ${slashes} ${p.id}`).toBe(0)
+            expect(edgeLengths(p).waist!).toBeCloseTo(edgeLengths(base.panels[i]!).waist!, 0)
+          }
+        }
+      }
+    }
+  })
+
   it('все основы принимают пустую модель и длину', () => {
     for (const b of BLOCKS) {
       const r = b.draft(SAMPLE_MEASUREMENTS, b.defaults('semi'))
@@ -145,3 +165,20 @@ describe('модель как основа', () => {
     expect(both.checks.every((c) => c.ok)).toBe(true)
   })
 })
+
+/** Number of crossings of the outline with itself (a twisted piece has some). */
+function selfCrossings(p: Panel): number {
+  const pts = outlineOf(p).points(6)
+  const n = pts.length
+  const cross = (a: Vec, b: Vec, c: Vec, d: Vec) => {
+    const o = (p: Vec, q: Vec, r: Vec) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0
+  }
+  let k = 0
+  for (let i = 0; i < n - 1; i++)
+    for (let j = i + 2; j < n - 1; j++) {
+      if (i === 0 && j === n - 2) continue
+      if (cross(pts[i]!, pts[i + 1]!, pts[j]!, pts[j + 1]!)) k++
+    }
+  return k
+}

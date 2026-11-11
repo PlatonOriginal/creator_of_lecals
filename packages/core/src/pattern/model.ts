@@ -162,7 +162,7 @@ function applySpec(block: { garment: GarmentKind }, base: BlockResult, spec: Mod
       let q = p
       const pivot = p.levels.hip ?? p.levels.waist ?? 0
       if (garment === 'skirt' && fl.darts > 0) q = dartsToHem(q, fl.darts)
-      if (garment === 'skirt' && fl.slashes > 0) q = slashFlare(q, fl.slashes)
+      if (garment === 'skirt' && fl.slashes > 0) q = slashFlare(q, fl.slashes, Math.min(8, Math.max(2, Math.ceil(fl.slashes / 60))))
       if (fl.side > 0) q = flareSeam(q, 'side', fl.side, garment === 'skirt' && fl.darts > 0 ? 0 : pivot)
       if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, p.fish.length ? pivot : (p.levels.waist ?? pivot))
       return q
