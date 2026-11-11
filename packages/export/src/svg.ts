@@ -35,17 +35,32 @@ export function pieceToSvg(piece: Piece, margin = 5): string {
 }
 
 /** SVG of several pieces side by side at 1:1, for previews. */
-export function piecesToSvg(pieces: Piece[], gap = 20, margin = 5): string {
+export function piecesToSvg(pieces: Piece[], gap = 20, margin = 5, aspect?: number): string {
+  // With `aspect` (width / height) the pieces wrap into rows of about that shape.
+  const ws = pieces.map((p) => p.bbox.maxX - p.bbox.minX)
+  const hs = pieces.map((p) => p.bbox.maxY - p.bbox.minY)
+  const rowW = aspect
+    ? Math.max(...ws, Math.sqrt(ws.reduce((a, b) => a + b + gap, 0) * Math.max(...hs) * aspect))
+    : Infinity
   let x = 0
-  let h = 0
-  const groups = pieces.map((p) => {
-    const { minX, minY, maxX, maxY } = p.bbox
-    const g = `<g transform="translate(${x - minX} ${-minY})">${pieceToSvg(p, 0).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`
-    x += maxX - minX + gap
-    h = Math.max(h, maxY - minY)
+  let y = 0
+  let rowH = 0
+  let w0 = 0
+  const groups = pieces.map((p, i) => {
+    const { minX, minY } = p.bbox
+    if (x > 0 && x + ws[i]! > rowW) {
+      y += rowH + gap
+      x = 0
+      rowH = 0
+    }
+    const g = `<g transform="translate(${x - minX} ${y - minY})">${pieceToSvg(p, 0).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`
+    x += ws[i]! + gap
+    w0 = Math.max(w0, x - gap)
+    rowH = Math.max(rowH, hs[i]!)
     return g
   })
-  const w = Math.max(0, x - gap)
+  const h = y + rowH
+  const w = Math.max(0, w0)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w + 2 * margin}mm" height="${h + 2 * margin}mm" ` +
     `viewBox="${-margin} ${-margin} ${w + 2 * margin} ${h + 2 * margin}">${groups.join('')}</svg>`

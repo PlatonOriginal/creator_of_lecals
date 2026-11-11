@@ -24,6 +24,7 @@ import { ModelForm } from './ModelForm'
 import { putModel, newId, type ModelDoc } from './library'
 import { emptyModel, lastLayer, withLastLayer } from './modelStore'
 import { piecesToSvg } from '@lecals/export/svg'
+import { ZoomView } from './ZoomView'
 import type { PaperSize } from '@lecals/export/pdf'
 import fontUrl from 'dejavu-fonts-ttf/ttf/DejaVuSans.ttf?url'
 
@@ -83,7 +84,7 @@ export function PatternPage({
     const modelled = applyLayers(block, result, model.layers, m)
     const info = { model: model.name, figure: figureLine(m) }
     const pieces = modelled.panels.map((p) => (allow.on ? cutPiece(p, allow, info) : netPiece(p)))
-    return { result, modelled, pieces, svg: piecesToSvg(pieces), ms: performance.now() - t }
+    return { result, modelled, pieces, svg: piecesToSvg(pieces, 20, 5, 1.6), ms: performance.now() - t }
     // `key` lists every value the draft uses.
   }, [key])
 
@@ -345,7 +346,18 @@ export function PatternPage({
           другого размера, масштаб печати неверный. Листы A4 склеиваются по меткам: буква — ряд, цифра — столбец.
         </p>
       </div>
-      <div className="preview" dangerouslySetInnerHTML={{ __html: drafted?.svg ?? '' }} />
+      <ZoomView
+        svg={drafted?.svg ?? ''}
+        banner={
+          drafted && drafted.modelled.warnings.length > 0 ? (
+            <ul className="errors banner">
+              {drafted.modelled.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : undefined
+        }
+      />
     </section>
   )
 }

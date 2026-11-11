@@ -56,13 +56,20 @@ function splitEdge(edges: Edge[], i: number, s: number): { edges: Edge[]; second
   return { edges: out, second: i + 1 }
 }
 
+/** Join two lines that meet (up to a tiny gap) without a tiny bridging segment. */
+function join(a: Line, b: Line): Line {
+  const l = new Line(a.start)
+  l.segs.push(...a.segs, ...b.segs)
+  return l
+}
+
 /** Merge neighbouring seam edges with the same name into one edge. */
 function mergeSame(edges: Edge[]): Edge[] {
   const out: Edge[] = []
   for (const e of edges) {
     const prev = out[out.length - 1]
     if (prev && prev.kind !== 'dart' && e.kind !== 'dart' && prev.id === e.id && prev.kind === e.kind && near(prev.line.end, e.line.start, 0.5)) {
-      out[out.length - 1] = { ...prev, line: new Line(prev.line.start).append(prev.line).append(e.line) }
+      out[out.length - 1] = { ...prev, line: join(prev.line, e.line) }
     } else out.push(e)
   }
   // The loop may start in the middle of an edge.
@@ -70,11 +77,25 @@ function mergeSame(edges: Edge[]): Edge[] {
     const f = out[0]!
     const l = out[out.length - 1]!
     if (f.kind !== 'dart' && l.kind !== 'dart' && f.id === l.id && f.kind === l.kind) {
-      out[0] = { ...l, line: new Line(l.line.start).append(l.line).append(f.line) }
+      out[0] = { ...l, line: near(l.line.end, f.line.start, 0.5) ? join(l.line, f.line) : new Line(l.line.start).append(l.line).append(f.line) }
       out.pop()
     }
   }
   return out
+}
+
+/**
+ * Bring the end of a line to p: a small gap moves the last point (a tiny
+ * bridging piece would give the allowance a spike), a real gap gets a
+ * straight piece.
+ */
+function bridge(l: Line, p: Vec) {
+  const segs = l.segs
+  const ls = segs[segs.length - 1]
+  if (ls && near(l.end, p, 3) && dist(segs.length > 1 ? segs[segs.length - 2]!.to : l.start, p) > 1e-3) {
+    const d = sub(p, ls.to)
+    segs[segs.length - 1] = ls.kind === 'L' ? { kind: 'L', to: p } : { ...ls, c2: add(ls.c2, d), to: p }
+  } else l.to(p)
 }
 
 /** Close tiny gaps between consecutive edges by snapping starts. */
@@ -91,13 +112,12 @@ function stitch(edges: Edge[]): Edge[] {
         out.push({ ...e, line: l })
         continue
       }
-      // A real gap: a straight piece in the previous edge.
-      prev.line.to(e.line.start)
+      bridge(prev.line, e.line.start)
     }
     out.push(e)
   }
   const last = out[out.length - 1]
-  if (last && out[0] && !near(last.line.end, out[0].line.start, 1e-6)) last.line.to(out[0].line.start)
+  if (last && out[0] && !near(last.line.end, out[0].line.start, 1e-6)) bridge(last.line, out[0].line.start)
   return out.filter((e) => e.line.segs.length > 0 && e.line.length() > 1e-3)
 }
 
@@ -632,9 +652,15 @@ export function dartsToHem(panel: Panel, share: number): Panel {
  * Extra flare by slashes from the hem up to the waist (the waist stays, the
  * hem opens): `amount` mm in total, over `count` slashes.
  */
-export function slashFlare(panel: Panel, amount: number, count = 2): Panel {
+export function slashFlare(panel: Panel, amount: number, count = 2, maxAngle = Infinity): Panel {
+  return slashFlareTurn(panel, amount, count, maxAngle).panel
+}
+
+/** Slash flare that also reports the total angle the hem opened by, degrees. */
+export function slashFlareTurn(panel: Panel, amount: number, count = 2, maxAngle = Infinity): { panel: Panel; angle: number } {
   let p = clonePanel(panel)
-  if (amount <= 0) return p
+  let total = 0
+  if (amount <= 0) return { panel: p, angle: 0 }
   const hem = p.edges.filter((e) => e.id === 'hem' && e.kind !== 'dart')
   const hx = hem.flatMap((e) => e.line.points(4)).map((q) => q.x)
   const x0 = Math.min(...hx)
@@ -656,14 +682,17 @@ export function slashFlare(panel: Panel, amount: number, count = 2): Panel {
   const wx = p.edges.filter((e) => e.id === 'waist' && e.kind !== 'dart').flatMap((e) => e.line.points(4)).map((q) => q.x)
   const w0 = Math.min(...wx)
   const w1 = Math.max(...wx)
+  // Slashes at least 20 mm apart on the waist (a narrow gore gets fewer).
+  count = Math.max(1, Math.min(count, Math.floor((w1 - w0) / 20)))
   for (let j = 1; j <= count; j++) {
     let x = w0 + ((w1 - w0) * j) / (count + 1)
     const m = mouths.find(([a, b]) => x > a - 10 && x < b + 10)
     if (m) x = x - m[0] < m[1] - x ? m[0] - 10 : m[1] + 10
     const W = crossingOn(p, 'waist', x)
     const Q = crossingOn(p, 'hem', x0 + ((x1 - x0) * j) / (count + 1))
-    if (W && Q) slashes.push({ W: W.at, Q: Q.at })
+    if (W && Q && !slashes.some((o) => dist(o.W, W.at) < 15)) slashes.push({ W: W.at, Q: Q.at })
   }
+  const n = slashes.length
   slashes.sort((a, b) => Math.abs(a.W.x - cx) - Math.abs(b.W.x - cx))
   for (let j = 0; j < slashes.length; j++) {
     const sl = slashes[j]!
@@ -685,12 +714,13 @@ export function slashFlare(panel: Panel, amount: number, count = 2): Panel {
     if (!Q || Q.d > 1) continue
     const r = dist(Wp, sl.Q)
     // The hem opens by the chord 2·r·sin(ang/2) = amount / count.
-    const ang = (2 * Math.asin(Math.min(0.7, amount / count / 2 / r)) * 180) / Math.PI
-    const opened = openHinge(p, id, Q, ang)
+    const ang = Math.min(maxAngle / n, (2 * Math.asin(Math.min(0.7, amount / n / 2 / r)) * 180) / Math.PI)
+    const opened = openHinge(p, id, Q, ang, slashes[j + 1]?.W)
+    total += ang
     p = opened.panel
     slashes = slashes.map((o, k) => (k > j ? { W: opened.f(o.W), Q: opened.f(o.Q) } : o))
   }
-  return smoothHem(p)
+  return { panel: smoothHem(p), angle: total }
 }
 
 /** The point of edge `id` nearest to `q`. */
@@ -705,7 +735,7 @@ function nearestOn(p: Panel, id: string, q: Vec): { i: number; s: number; d: num
 }
 
 /** Open a slash from the hem point `to` up to the hinge dart `id` by `ang` degrees. */
-function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: number): { panel: Panel; f: (q: Vec) => Vec } {
+function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: number, next?: Vec): { panel: Panel; f: (q: Vec) => Vec } {
   const p = clonePanel(panel)
   const split = splitEdge(p.edges, to.i, to.s)
   let edges = split.edges
@@ -714,7 +744,11 @@ function openHinge(panel: Panel, id: string, to: { i: number; s: number }, ang: 
   const W = edges[i]!.line.start
   const C = chain(edges, i + 2, split.second - 1)
   const D = chain(edges, split.second, i - 1)
-  const rotC = !hasCentre(C) || (hasCentre(D) && C.length <= D.length)
+  // The part without the centre line turns; with no centre line (a gore),
+  // the part that holds the slashes still to open.
+  const near = (part: Edge[], q: Vec) => Math.min(...part.map((e) => e.line.project(q).d))
+  const rotC =
+    !hasCentre(C) && !hasCentre(D) && next ? near(C, next) < near(D, next) : !hasCentre(C) || (hasCentre(D) && C.length <= D.length)
   // Turn so that the hem opens: the turning part moves away from the fixed one.
   const centroid = (part: Edge[]) => {
     const q = loopPoints(part)
@@ -844,4 +878,109 @@ export function cuffPanel(id: string, method: string, length: number, height: nu
       { edge: 'cuffInner', at: v(o.x + 20, o.y + h) },
     ],
   }
+}
+
+/**
+ * Cuts a skirt half into `k` gores (клинья) by straight seams from the waist
+ * to the hem, spread evenly over the waist and the hem. The new seams are
+ * named 'gore'. Gores are listed from the centre line to the side.
+ */
+export function goreSplit(panel: Panel, k: number): Panel[] {
+  if (k <= 1) return [clonePanel(panel)]
+  const waist = panel.edges.filter((e) => e.id === 'waist' && e.kind !== 'dart').flatMap((e) => e.line.points(4)).map((q) => q.x)
+  const hem = panel.edges.filter((e) => e.id === 'hem').flatMap((e) => e.line.points(4)).map((q) => q.x)
+  const [w0, w1] = [Math.min(...waist), Math.max(...waist)]
+  const [h0, h1] = [Math.min(...hem), Math.max(...hem)]
+  const mouths = panel.edges
+    .filter((e) => e.kind === 'dart' && e.dart?.leg === 1 && e.id === 'waist')
+    .map((e) => {
+      const l2 = panel.edges.find((o) => o.kind === 'dart' && o.dart?.id === e.dart!.id && o.dart.leg === 2)!
+      return [Math.min(e.line.start.x, l2.line.end.x), Math.max(e.line.start.x, l2.line.end.x)] as const
+    })
+  const centre = panel.edges.filter((e) => e.kind !== 'dart' && hasCentre([e])).flatMap((e) => e.line.points(4))
+  const cx = centre.length ? centre.reduce((a, q) => a + q.x, 0) / centre.length : w0
+  const fromCentre = Math.abs(cx - w0) < Math.abs(cx - w1)
+  // Cut lines, from the centre outwards.
+  const cuts: { W: Vec; Q: Vec }[] = []
+  for (let j = 1; j < k; j++) {
+    const f = fromCentre ? j / k : 1 - j / k
+    let x = w0 + (w1 - w0) * f
+    const m = mouths.find(([a, b]) => x > a - 10 && x < b + 10)
+    if (m) x = x - m[0] < m[1] - x ? m[0] - 10 : m[1] + 10
+    const W = crossingOn(panel, 'waist', x)
+    const Q = crossingOn(panel, 'hem', h0 + (h1 - h0) * f)
+    if (W && Q) cuts.push({ W: W.at, Q: Q.at })
+  }
+  const parts: Panel[] = []
+  let rest = clonePanel(panel)
+  const waistX = (q: Panel) => {
+    const xs = q.edges.filter((e) => e.id === 'waist').flatMap((e) => [e.line.start.x, e.line.end.x])
+    return xs.reduce((a, b) => a + b, 0) / xs.length
+  }
+  for (const c of cuts) {
+    const two = cutAlong(rest, c.W, c.Q)
+    // The part nearer the centre line is the next gore; the rest is cut further.
+    const [inner, outer] = Math.abs(waistX(two[0]) - cx) <= Math.abs(waistX(two[1]) - cx) ? two : [two[1], two[0]]
+    parts.push(inner)
+    rest = outer
+  }
+  parts.push(rest)
+  const n = parts.length
+  return parts.map((q, i) => {
+    q.id = `${panel.id}-${i + 1}`
+    q.title = `${panel.title}, клин ${i + 1} из ${n}`
+    if (!q.edges.some((e) => e.kind === 'fold')) q.cut = panel.cut.startsWith('Крой 1') ? 'Крой 2' : panel.cut
+    return q
+  })
+}
+
+/** Cut a panel along the straight line W (on the waist) to Q (on the hem): [part with the centre line, the other]. */
+function cutAlong(panel: Panel, W: Vec, Q: Vec): [Panel, Panel] {
+  const near = (p: Panel, id: string, q: Vec) => {
+    let best = { i: -1, s: 0, d: Infinity }
+    p.edges.forEach((e, i) => {
+      if (e.id !== id || e.kind === 'dart') return
+      const pr = e.line.project(q)
+      if (pr.d < best.d) best = { i, s: pr.s, d: pr.d }
+    })
+    return best
+  }
+  const p = clonePanel(panel)
+  const a = near(p, 'waist', W)
+  let edges = splitEdge(p.edges, a.i, a.s).edges
+  const b = near({ ...p, edges }, 'hem', Q)
+  edges = splitEdge(edges, b.i, b.s).edges
+  const iwi = edges.findIndex((e) => dist(e.line.start, W) < 0.05)
+  const iq = edges.findIndex((e) => dist(e.line.start, Q) < 0.05)
+  const A = chain(edges, iwi, iq - 1)
+  const B = chain(edges, iq, iwi - 1)
+  const partA: Edge[] = [...A, { id: 'gore', kind: 'seam', line: new Line(Q).to(W) }]
+  const partB: Edge[] = [...B, { id: 'gore', kind: 'seam', line: new Line(W).to(Q) }]
+  const make = (es: Edge[]): Panel => {
+    const q = clonePanel(panel)
+    q.edges = mergeSame(stitch(es))
+    const poly = loopPoints(q.edges)
+    q.fish = q.fish.filter((f) => pointInPolygon(f.top, poly))
+    q.marks = q.marks.filter((m) => m.line.points(4).every((pt) => pointInPolygon(pt, poly)))
+    q.notes = q.notes.filter((nt) => pointInPolygon(nt.at, poly))
+    q.notches = q.notches.filter((nt) => pointInPolygon(nt.at, poly))
+    goreGrain(q)
+    return q
+  }
+  const pa = make(partA)
+  const pb = make(partB)
+  return hasCentre(pa.edges) ? [pa, pb] : [pb, pa]
+}
+
+/** Grain and label of a gore: along the line from the middle of its waist to the middle of its hem. */
+export function goreGrain(q: Panel): void {
+  const mid = (id: string) => {
+    const pts = q.edges.filter((e) => e.id === id && e.kind !== 'dart').flatMap((e) => [e.line.start, e.line.end])
+    return mul(pts.reduce((a, b) => add(a, b), v(0, 0)), 1 / pts.length)
+  }
+  const w = mid('waist')
+  const h = mid('hem')
+  const at = (t: number) => add(w, mul(sub(h, w), t))
+  q.grain = [at(0.2), at(0.8)]
+  q.labelAt = add(at(0.35), v(8, 0))
 }

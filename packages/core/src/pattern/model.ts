@@ -14,7 +14,9 @@ import {
   positionOn,
   princess,
   puffSleeve,
-  slashFlare,
+  slashFlareTurn,
+  goreSplit,
+  goreGrain,
   transferDart,
   trimBelow,
   type NeckShape,
@@ -156,19 +158,47 @@ function applySpec(block: { garment: GarmentKind }, base: BlockResult, spec: Mod
 
   // 5. Flare.
   const fl = spec.flare
+  let goresUsed = 1
   if (fl) {
-    panels = panels.map((p) => {
-      if (p.role === 'sleeve' || p.role === 'cuff') return p
+    panels = panels.flatMap((p) => {
+      if (p.role === 'sleeve' || p.role === 'cuff') return [p]
       let q = p
       const pivot = p.levels.hip ?? p.levels.waist ?? 0
-      if (garment === 'skirt' && fl.darts > 0) q = dartsToHem(q, fl.darts)
-      if (garment === 'skirt' && fl.slashes > 0) q = slashFlare(q, fl.slashes, Math.min(8, Math.max(2, Math.ceil(fl.slashes / 60))))
-      if (fl.side > 0) q = flareSeam(q, 'side', fl.side, garment === 'skirt' && fl.darts > 0 ? 0 : pivot)
+      const side = (r: Panel) =>
+        fl.side > 0 && r.edges.some((e) => e.id === 'side') ? flareSeam(r, 'side', fl.side, garment === 'skirt' && fl.darts > 0 ? 0 : pivot) : r
+      if (garment === 'skirt') {
+        if (fl.darts > 0) q = dartsToHem(q, fl.darts)
+        if (fl.slashes <= 0) return [side(q)]
+        // A piece of a skirt opens at most to a quarter circle (four halves
+        // make a full sun, 360°). A larger flare cuts each half into gores
+        // (клинья), as one cuts a sun-and-a-half or a double sun.
+        for (let k = 1; ; k++) {
+          // A skirt wider than a sun has no waist darts: they all go into the hem.
+          const gores = goreSplit(k > 1 ? dartsToHem(q, 1) : q, k)
+          const a = fl.slashes / gores.length
+          const count = Math.min(8, Math.max(k > 1 ? 1 : 2, Math.ceil(a / 60)))
+          const out = gores.map((g) => {
+            const t = slashFlareTurn(g, a, count)
+            const r = side(t.panel)
+            if (gores.length > 1) goreGrain(r)
+            return { r, sweep: sweep(side(g)) + t.angle }
+          })
+          if (out.every((o) => o.sweep <= 90.5) || k >= 6) {
+            goresUsed = Math.max(goresUsed, k)
+            return out.map((o) => o.r)
+          }
+        }
+      }
+      q = side(q)
       // From the hip line, like the side seams: pivoting at the waist straightened
       // the princess seam over the hips and took up to 3 cm off the hip girth.
       if (fl.princess > 0) q = flareSeam(q, 'princess', fl.princess, pivot)
-      return q
+      return [q]
     })
+    if (goresUsed > 1)
+      warnings.push(
+        `Такой клёш больше полного «солнца» (360°): из обычных деталей юбку не скроить. Каждая половина юбки разделена на ${goresUsed} ${goresUsed < 5 ? 'клина' : 'клиньев'}, их сшивают между собой; вытачки по талии переведены в низ.`,
+      )
   }
 
   // 6. Sleeve.
@@ -287,4 +317,24 @@ export function applyLayers(block: { garment: GarmentKind }, base: BlockResult, 
   }
   const panels = matchNotches(cur.panels, base, puff)
   return { panels, checks: modelChecks(panels, base), warnings }
+}
+
+/**
+ * The angle in degrees between the centre line (front or back) and the side
+ * seam of a skirt half: 0 for a straight skirt, 90 for a quarter of a sun.
+ */
+export function sweep(p: Panel): number {
+  const n = p.edges.length
+  const hem = p.edges.map((e, i) => (e.id === 'hem' ? i : -1)).filter((i) => i >= 0)
+  if (!hem.length) return 0
+  const first = hem.find((i) => !hem.includes((i - 1 + n) % n)) ?? hem[0]!
+  let last = first
+  while (hem.includes((last + 1) % n) && (last + 1) % n !== first) last = (last + 1) % n
+  // The seams that meet the hem, each directed towards the hem.
+  const before = p.edges[(first - 1 + n) % n]!.line
+  const after = p.edges[(last + 1) % n]!.line
+  const d1 = { x: before.end.x - before.start.x, y: before.end.y - before.start.y }
+  const d2 = { x: after.start.x - after.end.x, y: after.start.y - after.end.y }
+  const c = (d1.x * d2.x + d1.y * d2.y) / (Math.hypot(d1.x, d1.y) * Math.hypot(d2.x, d2.y))
+  return (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI
 }
