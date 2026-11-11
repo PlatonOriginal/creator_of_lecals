@@ -70,7 +70,12 @@ export function ZoomView({ svg, banner }: { svg: string; banner?: ReactNode }) {
       <div
         ref={box}
         className={`zoom-box${view.k > 1 ? ' zoomed' : ''}`}
+        // A double click must zoom, not select the text on the pattern.
+        onMouseDown={(e) => {
+          if (e.detail > 1) e.preventDefault()
+        }}
         onDoubleClick={(e) => {
+          window.getSelection()?.removeAllRanges()
           const p = local(e.clientX, e.clientY)
           zoomBy(2, p.x, p.y)
         }}
