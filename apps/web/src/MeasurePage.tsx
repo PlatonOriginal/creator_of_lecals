@@ -29,9 +29,10 @@ import {
 
 type Mode = { kind: 'start' } | { kind: 'step'; index: number } | { kind: 'summary' }
 
-/** Measurements the wizard walks through after the start screen. */
 const STEP_IDS = MEASUREMENT_IDS.filter((id) => !LEADING_IDS.includes(id) || id === 'waist')
-
+const MALE_STEP_IDS = MALE_MEASUREMENT_IDS.filter(
+  (id) => id !== 'height' && id !== 'chest3' && id !== 'waist',
+)
 const GROUP_NAMES = ['нулевая', 'первая', 'вторая', 'третья', 'четвёртая', 'пятая']
 
 export function MeasurePage({
@@ -50,6 +51,7 @@ export function MeasurePage({
 }
 
 function MaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
+  const [mode, setMode] = useState<Mode>({ kind: 'start' })
   const [selectedTable8, setSelectedTable8] = useState<string>('176-100-88')
   const built = useMemo(() => buildMaleMeasurements(figure.values), [figure.values])
   const lead = useMemo(
@@ -69,6 +71,17 @@ function MaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: F
     onChange({ ...figure, values: nextValues as Figure['values'] })
   }
 
+  function confirmMale(id: string) {
+    const cur = figure.confirmed as unknown as string[]
+    if (!cur.includes(id)) {
+      onChange({ ...figure, confirmed: [...cur, id] as Figure['confirmed'] })
+    }
+  }
+
+  function isMaleConfirmed(id: string): boolean {
+    return (figure.confirmed as unknown as string[]).includes(id)
+  }
+
   function applyTypicalRow(label: string) {
     setSelectedTable8(label)
     const row = MALE_EMKO_TABLE_8.find((r) => r.label === label) ?? MALE_EMKO_TABLE_8[0]!
@@ -83,75 +96,202 @@ function MaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: F
     })
   }
 
+  if (mode.kind === 'start') {
+    return (
+      <section className="page measure">
+        <div className="panel">
+          <h2>Мерки фигуры (мужской режим · ГОСТ 17521-72)</h2>
+          <p className="hint">
+            Выберите типовую фигуру по табл. 8 ЕМКО СЭВ или задайте ведущие признаки. Дальше мастер проведёт по
+            каждой мерке: схема измерения, описание, ввод значения или подстановка типового расчёта.
+          </p>
+
+          <label className="field">
+            <span>Типовая фигура (табл. 8)</span>
+            <select value={selectedTable8} onChange={(e) => applyTypicalRow(e.target.value)}>
+              {MALE_EMKO_TABLE_8.map((row) => (
+                <option key={row.label} value={row.label}>
+                  {row.label} (Ог3 {Math.round(row.chest3 / 10)} · От {Math.round(row.waist / 10)})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="typical">
+            {nearest.exact ? 'Выбрана типовая фигура' : 'Ближайшая типовая фигура табл. 8'}:{' '}
+            <b>{nearest.row.label}</b> · Ог3 {Math.round(nearest.row.chest3 / 10)} см · От{' '}
+            {Math.round(nearest.row.waist / 10)} см
+          </p>
+
+          <h3>Ведущие признаки</h3>
+          {(['height', 'chest3', 'waist'] as const).map((id) => {
+            const meta = MALE_MEASUREMENT_META[id]
+            if (!meta) return null
+            return (
+              <label key={id} className="field" title={meta.hint}>
+                <span>
+                  {meta.title}{' '}
+                  <span className="short">
+                    {meta.short} · {meta.gost}
+                  </span>
+                </span>
+                <CmInput label={meta.title} value={built[id]} onChange={(v) => setMaleValue(id, v)} />
+              </label>
+            )
+          })}
+
+          <div className="buttons">
+            <button type="button" onClick={() => setMode({ kind: 'step', index: 0 })}>
+              Продолжить по шагам
+            </button>
+            <button type="button" className="secondary" onClick={() => setMode({ kind: 'summary' })}>
+              Все мерки
+            </button>
+            <button type="button" className="secondary" onClick={() => applyTypicalRow(selectedTable8)}>
+              Подставить типовые мерки
+            </button>
+          </div>
+
+          <details className="hint more">
+            <summary>Как снимать мерки</summary>
+            <p>
+              Измерения выполняют в лёгкой одежде без обуви, стоя прямо, без напряжения. По тесьме на талии отсчитывают
+              вертикальные и продольные размерные признаки по ГОСТ 17521-72.
+            </p>
+          </details>
+        </div>
+      </section>
+    )
+  }
+
+  if (mode.kind === 'summary') {
+    const confirmedList = figure.confirmed as unknown as string[]
+    return (
+      <section className="page measure">
+        <div className="panel">
+          <h2>Все мужские мерки</h2>
+          <p className="hint">
+            Ближайшая типовая фигура табл. 8: {nearest.row.label}. Подтверждено {confirmedList.length} из{' '}
+            {MALE_MEASUREMENT_IDS.length} признаков. Нажмите на мерку, чтобы открыть шаг мастера.
+          </p>
+
+          <h3>Ведущие признаки</h3>
+          <ul className="summary">
+            {(['height', 'chest3', 'waist'] as const).map((id) => {
+              const meta = MALE_MEASUREMENT_META[id]
+              if (!meta) return null
+              return (
+                <li key={id}>
+                  <button type="button" className="row" onClick={() => setMode({ kind: 'start' })}>
+                    <span>
+                      {meta.title}{' '}
+                      <span className="short">
+                        {meta.short} · {meta.gost}
+                      </span>
+                    </span>
+                    <span className="val">{formatCm(built[id])}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+
+          <h3>Остальные размерные признаки</h3>
+          <ul className="summary">
+            {MALE_STEP_IDS.map((id, idx) => {
+              const meta = MALE_MEASUREMENT_META[id]
+              if (!meta) return null
+              const isExplicit = (figure.values as Record<string, number | undefined>)[id] !== undefined
+              const isConf = isMaleConfirmed(id)
+              return (
+                <li key={id}>
+                  <button type="button" className="row" onClick={() => setMode({ kind: 'step', index: idx })}>
+                    <span>
+                      {meta.title}{' '}
+                      <span className="short">
+                        {meta.short}
+                        {meta.gost ? ` · ${meta.gost}` : ''}
+                      </span>
+                    </span>
+                    <span className="val">
+                      {formatCm(built[id])}
+                      {!isExplicit && !isConf && <span className="tag">типовое</span>}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="buttons">
+            <button type="button" className="secondary" onClick={() => setMode({ kind: 'start' })}>
+              Начало и табл. 8
+            </button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const stepIndex = Math.max(0, Math.min(MALE_STEP_IDS.length - 1, mode.index))
+  const id = MALE_STEP_IDS[stepIndex]!
+  const meta = MALE_MEASUREMENT_META[id]!
+  const isLast = stepIndex === MALE_STEP_IDS.length - 1
+  const isExplicit = (figure.values as Record<string, number | undefined>)[id] !== undefined
+  const go = (nextIndex: number) =>
+    setMode(nextIndex >= MALE_STEP_IDS.length ? { kind: 'summary' } : { kind: 'step', index: nextIndex })
+
   return (
     <section className="page measure">
-      <div className="panel">
-        <h2>Мужские мерки (ГОСТ 17521-72 · ЕМКО СЭВ табл. 8)</h2>
-        <p className="hint">
-          Выберите типовую фигуру по табл. 8 ЕМКО СЭВ для автозаполнения размерных признаков или введите свои мерки в см.
+      <div className="progress" aria-label={`Мерка ${stepIndex + 1} из ${MALE_STEP_IDS.length}`}>
+        <div style={{ width: `${((stepIndex + 1) / MALE_STEP_IDS.length) * 100}%` }} />
+      </div>
+      <div className="panel step">
+        <p className="step-meta">
+          Мужские мерки · {stepIndex + 1} из {MALE_STEP_IDS.length}
+          {meta.gost && <> · признак {meta.gost} по ГОСТ 17521-72</>}
         </p>
-
-        <label className="field">
-          <span>Типовая фигура (табл. 8)</span>
-          <select
-            value={selectedTable8}
-            onChange={(e) => applyTypicalRow(e.target.value)}
+        <h2>
+          {meta.title} <span className="short">{meta.short}</span>
+        </h2>
+        <div className="step-body">
+          <FigureSketch id={id} gender="male" />
+          <p className="how">{meta.hint}</p>
+        </div>
+        <div className="step-input">
+          <CmInput
+            key={id}
+            big
+            label={meta.title}
+            value={built[id]}
+            onChange={(v) => setMaleValue(id, v)}
+          />
+          <p className="hint">
+            Типовой расчёт для фигуры {nearest.row.label}: {formatCm(built[id])}
+            {!isExplicit && !isMaleConfirmed(id) && ' (подставлено по типовой фигуре/градации)'}
+          </p>
+        </div>
+        <div className="buttons nav">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => (stepIndex === 0 ? setMode({ kind: 'start' }) : go(stepIndex - 1))}
           >
-            {MALE_EMKO_TABLE_8.map((row) => (
-              <option key={row.label} value={row.label}>
-                {row.label} (Ог3 {Math.round(row.chest3 / 10)} · От {Math.round(row.waist / 10)})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <p className="typical">
-          {nearest.exact ? 'Выбрана типовая фигура' : 'Ближайшая типовая фигура табл. 8'}:{' '}
-          <b>{nearest.row.label}</b> · Ог3 {Math.round(nearest.row.chest3 / 10)} см · От {Math.round(nearest.row.waist / 10)} см
-        </p>
-
-        <div className="buttons">
-          <button type="button" onClick={() => applyTypicalRow(selectedTable8)}>
-            Подставить типовые мерки
+            Назад
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              confirmMale(id)
+              go(stepIndex + 1)
+            }}
+          >
+            {isLast ? 'Готово' : 'Дальше'}
           </button>
         </div>
-
-        <h3>Ведущие признаки</h3>
-        {(['height', 'chest3', 'waist'] as const).map((id) => {
-          const meta = MALE_MEASUREMENT_META[id]
-          if (!meta) return null
-          return (
-            <label key={id} className="field" title={meta.hint}>
-              <span>
-                {meta.title} <span className="short">{meta.short} · {meta.gost}</span>
-              </span>
-              <CmInput
-                label={meta.title}
-                value={built[id]}
-                onChange={(v) => setMaleValue(id, v)}
-              />
-            </label>
-          )
-        })}
-
-        <h3>Остальные размерные признаки ({MALE_MEASUREMENT_IDS.length - 3})</h3>
-        {MALE_MEASUREMENT_IDS.filter((id) => id !== 'height' && id !== 'chest3' && id !== 'waist').map((id) => {
-          const meta = MALE_MEASUREMENT_META[id]
-          if (!meta) return null
-          const isExplicit = (figure.values as Record<string, number | undefined>)[id] !== undefined
-          return (
-            <label key={id} className={isExplicit ? 'field' : 'field typical'} title={meta.hint}>
-              <span>
-                {meta.title} <span className="short">{meta.short}{meta.gost ? ` · ${meta.gost}` : ''}</span>
-              </span>
-              <CmInput
-                label={meta.title}
-                value={built[id]}
-                onChange={(v) => setMaleValue(id, v)}
-              />
-            </label>
-          )
-        })}
+        <button type="button" className="link" onClick={() => setMode({ kind: 'summary' })}>
+          Все мерки
+        </button>
       </div>
     </section>
   )
