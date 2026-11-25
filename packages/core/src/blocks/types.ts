@@ -1,7 +1,9 @@
 import type { Piece } from '../geometry'
-import type { MeasurementId, Measurements } from '../measurements'
+import type { Measurements } from '../measurements'
 import type { Vec } from '../draft/geom'
 import type { Panel } from '../pattern/panel'
+
+export type Gender = 'female' | 'male'
 
 export type MethodId = 'emko' | 'muller'
 
@@ -72,16 +74,20 @@ export interface BlockResult {
 
 export type GarmentKind = 'skirt' | 'dress' | 'trousers'
 
-export interface BlockDef<O extends Record<string, number> = Record<string, number>> {
+export interface BlockDef<
+  O extends Record<string, number> = Record<string, number>,
+  M extends object = Measurements,
+> {
   id: string
   title: string
+  gender?: Gender
   garment: GarmentKind
   method: MethodId
   /** Measurements the method needs; checked with validateMeasurements. */
-  required: readonly MeasurementId[]
+  required: readonly (keyof M & string)[]
   options: (BlockOption & { id: keyof O & string })[]
   defaults: (s: Silhouette) => O
-  draft: (m: Pick<Measurements, MeasurementId>, o: O) => BlockResult
+  draft: (m: M, o: O) => BlockResult
 }
 
 export function check(id: string, title: string, a: number, b: number, expected = 0, tolerance = 3): SeamCheck {
