@@ -537,10 +537,10 @@ export function draftEmkoMaleJacket(
   const underCapY = VOR
   const underDipY = VOR + 28
 
-  const underCapCurve = new Line(v(underRightAt(VOR), underCapY)).smooth(
-    v(-0.4, 0.8),
-    v(-0.4, -0.8),
-    v(underLeftAt(VOR), underCapY),
+  const underCapCurve = new Line(v(underLeftAt(VOR), underCapY)).smooth(
+    v(0.4, 0.8),
+    v(0.4, -0.8),
+    v(underRightAt(VOR), underCapY),
     0.45,
   )
 
