@@ -47,7 +47,7 @@ export interface FishDart {
 }
 
 export type PanelRole =
-  | 'back' | 'front' | 'sleeve' | 'cuff'
+  | 'back' | 'front' | 'sleeve' | 'sleeveTop' | 'sleeveUnder' | 'cuff'
   | 'collar' | 'collarStand' | 'placket'
   | 'skirtBack' | 'skirtFront'
   | 'trousersBack' | 'trousersFront'
