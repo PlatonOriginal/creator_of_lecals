@@ -1,5 +1,6 @@
 import type { Allowances, FittingEntry, ModelSpec, Silhouette } from '@lecals/core'
 import type { Figure } from './figureStore'
+import type { GenderMode } from './maleUi'
 
 /**
  * Personal library on the device (IndexedDB): figures, own blocks and models.
@@ -18,6 +19,7 @@ export interface ModelDoc {
   name: string
   /** 'base': an own block (no modelling), 'model': a modelled garment. */
   kind: 'base' | 'model'
+  gender?: GenderMode
   block: string
   silhouette: Silhouette
   options: Record<string, number>

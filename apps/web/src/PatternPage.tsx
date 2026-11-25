@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCKS,
+  MALE_BLOCKS,
   MEASUREMENTS,
   METHODS,
   SAMPLE_MEASUREMENTS,
@@ -26,6 +27,14 @@ import { emptyModel, lastLayer, withLastLayer } from './modelStore'
 import { piecesToSvg } from '@lecals/export/svg'
 import { ZoomView } from './ZoomView'
 import type { PaperSize } from '@lecals/export/pdf'
+import {
+  ALL_BLOCKS,
+  MALE_MEASUREMENT_META,
+  blocksForGender,
+  buildMaleMeasurements,
+  isMaleBlockId,
+  type GenderMode,
+} from './maleUi'
 import fontUrl from 'dejavu-fonts-ttf/ttf/DejaVuSans.ttf?url'
 
 let fontBytes: Promise<ArrayBuffer> | undefined
@@ -53,46 +62,70 @@ export function PatternPage({
   onChange,
   model,
   onModelChange,
+  gender = 'female',
+  onGenderChange,
 }: {
   figure: Figure
   onChange: (f: Figure) => void
   model: ModelDoc
   onModelChange: (m: ModelDoc) => void
+  gender?: GenderMode
+  onGenderChange?: (g: GenderMode) => void
 }) {
   const setModel = (m: ModelDoc) => onModelChange({ ...m, updated: Date.now() })
-  const block: BlockDef = BLOCKS.find((b) => b.id === model.block) ?? BLOCKS[0]!
+  const availableBlocks = blocksForGender(gender)
+  const block: BlockDef =
+    availableBlocks.find((b) => b.id === model.block) ??
+    ALL_BLOCKS.find((b) => b.id === model.block) ??
+    availableBlocks[0]!
+
+  useEffect(() => {
+    if (!availableBlocks.some((b) => b.id === block.id)) {
+      const next = availableBlocks[0]!
+      setModel({ ...model, block: next.id, options: {}, layers: [{}] })
+    }
+  }, [gender])
+
   const options = { ...block.defaults(model.silhouette), ...model.options }
   const allow = model.allowances
+  const male = gender === 'male' || isMaleBlockId(block.id)
 
-  // The user's measurements; gaps are prefilled from the typical figure (or the sample one).
   const filled = prefill(figure.values)
-  const m = Object.fromEntries(
-    block.required.map((id) => [id, figure.values[id] ?? filled[id] ?? SAMPLE_MEASUREMENTS[id]]),
-  ) as Measurements
-  const typicalIds = block.required.filter((id) => figure.values[id] === undefined)
-  const key = JSON.stringify([block.id, block.required.map((id) => m[id]), options, model.layers, allow, model.name])
+  const maleBuilt = useMemo(() => buildMaleMeasurements(figure.values), [figure.values])
+  const m = useMemo(() => {
+    if (male) {
+      return Object.fromEntries(
+        block.required.map((id) => [id, (maleBuilt as Record<string, number>)[id] ?? 0]),
+      ) as unknown as Measurements
+    }
+    return Object.fromEntries(
+      block.required.map((id) => [id, figure.values[id] ?? filled[id] ?? SAMPLE_MEASUREMENTS[id]]),
+    ) as Measurements
+  }, [male, block.required, maleBuilt, figure.values, filled])
+
+  const typicalIds = block.required.filter((id) => (figure.values as Record<string, number | undefined>)[id] === undefined)
+  const key = JSON.stringify([block.id, block.required.map((id) => (m as Record<string, number>)[id]), options, model.layers, allow, model.name, male])
 
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
-  const issues = validateMeasurements(m, { required: block.required, plausibility: false })
+  const issues = male ? [] : validateMeasurements(m, { required: block.required, plausibility: false })
   const errors = issues.filter((i) => i.level === 'error').map((i) => i.message)
 
   const drafted = useMemo(() => {
     if (errors.length) return undefined
     const t = performance.now()
-    const result = block.draft(m, options)
-    const modelled = applyLayers(block, result, model.layers, m)
-    const info = { model: model.name, figure: figureLine(m) }
+    const result = block.draft(m as never, options)
+    const modelled = applyLayers(block, result, model.layers, m as never)
+    const info = { model: model.name, figure: figureLine(m as Record<string, number | undefined>) }
     const pieces = modelled.panels.map((p) => (allow.on ? cutPiece(p, allow, info) : netPiece(p)))
     return { result, modelled, pieces, svg: piecesToSvg(pieces, 20, 5, 1.6), ms: performance.now() - t }
-    // `key` lists every value the draft uses.
   }, [key])
 
   function setValue(id: MeasurementId, v: number | undefined) {
-    const values = { ...figure.values }
+    const values = { ...figure.values } as Record<string, number | undefined>
     if (v === undefined) delete values[id]
     else values[id] = v
-    onChange({ ...figure, values })
+    onChange({ ...figure, values: values as Figure['values'] })
   }
 
   async function makePdf(paperName: 'A4' | 'A0') {
@@ -101,7 +134,6 @@ export function PatternPage({
     setStatus('Готовлю PDF…')
     try {
       const t = performance.now()
-      // PDF code (pdf-lib, fonts) is loaded only when needed.
       const { piecesToPdf, A4, A0 } = await import('@lecals/export/pdf')
       const paper: PaperSize = paperName === 'A4' ? A4 : A0
       const res = await piecesToPdf(drafted.pieces, {
@@ -123,7 +155,10 @@ export function PatternPage({
 
   async function save(kind: 'base' | 'model') {
     try {
-      const doc: ModelDoc = kind === 'model' ? { ...model, kind: model.layers.some(hasSteps) ? 'model' : 'base' } : { ...model, id: newId(), kind: 'base', name: `${model.name} (основа)` }
+      const doc: ModelDoc =
+        kind === 'model'
+          ? { ...model, gender, kind: model.layers.some(hasSteps) ? 'model' : 'base' }
+          : { ...model, id: newId(), gender, kind: 'base', name: `${model.name} (основа)` }
       await putModel({ ...doc, updated: Date.now() })
       if (kind === 'model') setModel(doc)
       setStatus(`Сохранено в библиотеку: «${doc.name}»`)
@@ -132,8 +167,9 @@ export function PatternPage({
     }
   }
 
-  const garmentChanges = (id: string) => BLOCKS.find((b) => b.id === id)?.garment !== block.garment
+  const garmentChanges = (id: string) => ALL_BLOCKS.find((b) => b.id === id)?.garment !== block.garment
   const own = lastLayer(model)
+  const methodsForGender = Array.from(new Set(availableBlocks.map((b) => b.method))) as MethodId[]
 
   return (
     <section className="page pattern">
@@ -143,6 +179,24 @@ export function PatternPage({
           <span>Название</span>
           <input className="text" value={model.name} onChange={(e) => setModel({ ...model, name: e.target.value })} />
         </label>
+        {onGenderChange && (
+          <label className="field">
+            <span>Режим</span>
+            <select
+              value={gender}
+              onChange={(e) => {
+                const nextGender = e.target.value as GenderMode
+                onGenderChange(nextGender)
+                const pool = blocksForGender(nextGender)
+                const nextBlock = pool[0] ?? BLOCKS[0] ?? MALE_BLOCKS[0]!
+                setModel({ ...model, gender: nextGender, block: nextBlock.id, options: {}, layers: [{}] })
+              }}
+            >
+              <option value="female">Женский</option>
+              <option value="male">Мужской</option>
+            </select>
+          </label>
+        )}
         {model.baseName && <p className="hint">Построена на модели «{model.baseName}»: её приёмы уже применены, ниже — свои.</p>}
         <label className="field">
           <span>Методика</span>
@@ -151,14 +205,16 @@ export function PatternPage({
             disabled={model.layers.length > 1}
             onChange={(e) => {
               const method = e.target.value as MethodId
-              // The same garment by the other method keeps the modelling steps.
-              const next = BLOCKS.find((b) => b.method === method && b.garment === block.garment) ?? BLOCKS.find((b) => b.method === method)!
+              const next =
+                availableBlocks.find((b) => b.method === method && b.garment === block.garment) ??
+                availableBlocks.find((b) => b.method === method) ??
+                availableBlocks[0]!
               setModel({ ...model, block: next.id, options: {}, ...(garmentChanges(next.id) ? { layers: [{}] } : {}) })
             }}
           >
-            {(Object.keys(METHODS) as MethodId[]).map((m) => (
-              <option key={m} value={m}>
-                {METHODS[m]}
+            {methodsForGender.map((mId) => (
+              <option key={mId} value={mId}>
+                {METHODS[mId]}
               </option>
             ))}
           </select>
@@ -172,11 +228,13 @@ export function PatternPage({
               setModel({ ...model, block: e.target.value, options: {}, ...(garmentChanges(e.target.value) ? { layers: [{}] } : {}) })
             }
           >
-            {BLOCKS.filter((b) => b.method === block.method).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.title}
-              </option>
-            ))}
+            {availableBlocks
+              .filter((b) => b.method === block.method)
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.title}
+                </option>
+              ))}
           </select>
         </label>
         <label className="field">
@@ -216,7 +274,12 @@ export function PatternPage({
         </details>
 
         <h3>Моделирование</h3>
-        <ModelForm garment={block.garment} spec={own} onChange={(spec) => setModel(withLastLayer(model, spec))} />
+        <ModelForm
+          garment={block.garment}
+          spec={own}
+          onChange={(spec) => setModel(withLastLayer(model, spec))}
+          gender={gender}
+        />
         {model.layers.some(hasSteps) && (
           <button className="link" onClick={() => setModel(withLastLayer(model, {}))}>
             Сбросить приёмы
@@ -264,14 +327,21 @@ export function PatternPage({
         )}
         <details open={typicalIds.length > 0}>
           <summary>Мерки для этой основы ({block.required.length})</summary>
-          {block.required.map((id) => (
-            <label key={id} className={typicalIds.includes(id) ? 'field typical' : 'field'}>
-              <span>
-                {MEASUREMENTS[id].title} ({MEASUREMENTS[id].short})
-              </span>
-              <CmInput label={MEASUREMENTS[id].title} value={m[id]} onChange={(v) => setValue(id, v)} />
-            </label>
-          ))}
+          {block.required.map((id) => {
+            const maleMeta = MALE_MEASUREMENT_META[id as keyof typeof MALE_MEASUREMENT_META]
+            const femaleMeta = MEASUREMENTS[id as MeasurementId]
+            const title = maleMeta?.title ?? femaleMeta?.title ?? id
+            const short = maleMeta?.short ?? femaleMeta?.short ?? id
+            const val = (m as Record<string, number>)[id]
+            return (
+              <label key={id} className={typicalIds.includes(id) ? 'field typical' : 'field'}>
+                <span>
+                  {title} ({short})
+                </span>
+                <CmInput label={title} value={val} onChange={(v) => setValue(id as MeasurementId, v)} />
+              </label>
+            )
+          })}
         </details>
         {errors.length > 0 && (
           <ul className="errors">
@@ -378,8 +448,14 @@ export function hasSteps(s: ModelSpec): boolean {
   )
 }
 
-function figureLine(m: Partial<Measurements>): string {
-  const p = [m.height && `рост ${cm(m.height)}`, m.bust && `Ог ${cm(m.bust)}`, m.waist && `От ${cm(m.waist)}`, m.hips && `Об ${cm(m.hips)}`]
+function figureLine(m: Partial<Measurements & Record<string, number>>): string {
+  const chest = m.bust ?? m.chest3
+  const p = [
+    m.height && `рост ${cm(m.height)}`,
+    chest && `Ог ${cm(chest)}`,
+    m.waist && `От ${cm(m.waist)}`,
+    m.hips && `Об ${cm(m.hips)}`,
+  ]
   return p.filter(Boolean).join(', ')
 }
 
