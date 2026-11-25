@@ -24,7 +24,7 @@ import { type V3, add3, convexHull, cross3, dot3, mul3, nearestPiece, norm3, pol
 
 /** What the shell needs of the garment (the GarmentProfile of @lecals/core fits). */
 export interface GarmentShape {
-  garment: 'skirt' | 'dress' | 'trousers'
+  garment: 'skirt' | 'dress' | 'trousers' | 'shirt' | 'jacket'
   top: number
   hem: number
   levels: { bust?: number; chest?: number; waist: number; hip?: number; crotch?: number; knee?: number }

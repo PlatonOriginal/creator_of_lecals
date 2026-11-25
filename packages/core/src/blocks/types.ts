@@ -72,7 +72,7 @@ export interface BlockResult {
   warnings: string[]
 }
 
-export type GarmentKind = 'skirt' | 'dress' | 'trousers'
+export type GarmentKind = 'skirt' | 'dress' | 'trousers' | 'shirt' | 'jacket'
 
 export interface BlockDef<
   O extends Record<string, number> = Record<string, number>,
