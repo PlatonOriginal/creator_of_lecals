@@ -121,7 +121,7 @@ describe('припуски', () => {
           for (const q of pts.filter(far)) {
             const d = Math.min(...cut.map((c, i) => segDist(q, c, cut[(i + 1) % cut.length]!)))
             expect(pointInPolygon(q, cut) || d < a + 2, `${p.id}.${e.id}`).toBe(true)
-            expect(Math.abs(d - a), `${p.id}.${e.id}`).toBeLessThan(e.id === 'cap' ? 9 : e.id === 'waist' ? 3 : 1.5)
+            expect(Math.abs(d - a), `${p.id}.${e.id}`).toBeLessThan(e.id === 'cap' ? 9 : 1.5)
           }
         }
         expect(safeArea(cut)).toBeGreaterThanOrEqual(safeArea(outlineOf(p).points(8)))
