@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import {
   LEADING_IDS,
+  MALE_EMKO_TABLE_8,
   MEASUREMENTS,
   MEASUREMENT_GROUPS,
   MEASUREMENT_IDS,
+  type MaleMeasurements,
   type MeasurementId,
   type MeasurementIssue,
   formatCm,
@@ -17,6 +19,13 @@ import {
 import { CmInput } from './CmInput'
 import { FigureSketch } from './FigureSketch'
 import { type Figure, confirmedCount } from './figureStore'
+import {
+  MALE_MEASUREMENT_IDS,
+  MALE_MEASUREMENT_META,
+  buildMaleMeasurements,
+  nearestMaleTable8,
+  type GenderMode,
+} from './maleUi'
 
 type Mode = { kind: 'start' } | { kind: 'step'; index: number } | { kind: 'summary' }
 
@@ -25,7 +34,130 @@ const STEP_IDS = MEASUREMENT_IDS.filter((id) => !LEADING_IDS.includes(id) || id 
 
 const GROUP_NAMES = ['нулевая', 'первая', 'вторая', 'третья', 'четвёртая', 'пятая']
 
-export function MeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
+export function MeasurePage({
+  figure,
+  onChange,
+  gender = 'female',
+}: {
+  figure: Figure
+  onChange: (f: Figure) => void
+  gender?: GenderMode
+}) {
+  if (gender === 'male') {
+    return <MaleMeasurePage figure={figure} onChange={onChange} />
+  }
+  return <FemaleMeasurePage figure={figure} onChange={onChange} />
+}
+
+function MaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
+  const [selectedTable8, setSelectedTable8] = useState<string>('176-100-88')
+  const built = useMemo(() => buildMaleMeasurements(figure.values), [figure.values])
+  const lead = useMemo(
+    () => ({
+      height: built.height,
+      chest3: built.chest3,
+      waist: built.waist,
+    }),
+    [built.height, built.chest3, built.waist],
+  )
+  const nearest = useMemo(() => nearestMaleTable8(lead), [lead])
+
+  function setMaleValue(id: keyof MaleMeasurements, v: number | undefined) {
+    const nextValues = { ...(figure.values as Record<string, number | undefined>) }
+    if (v === undefined) delete nextValues[id]
+    else nextValues[id] = v
+    onChange({ ...figure, values: nextValues as Figure['values'] })
+  }
+
+  function applyTypicalRow(label: string) {
+    setSelectedTable8(label)
+    const row = MALE_EMKO_TABLE_8.find((r) => r.label === label) ?? MALE_EMKO_TABLE_8[0]!
+    const filled = buildMaleMeasurements({
+      height: row.height,
+      chest3: row.chest3,
+      waist: row.waist,
+    })
+    onChange({
+      values: { ...(filled as unknown as Record<string, number>) } as Figure['values'],
+      confirmed: ['height', 'waist'],
+    })
+  }
+
+  return (
+    <section className="page measure">
+      <div className="panel">
+        <h2>Мужские мерки (ГОСТ 17521-72 · ЕМКО СЭВ табл. 8)</h2>
+        <p className="hint">
+          Выберите типовую фигуру по табл. 8 ЕМКО СЭВ для автозаполнения размерных признаков или введите свои мерки в см.
+        </p>
+
+        <label className="field">
+          <span>Типовая фигура (табл. 8)</span>
+          <select
+            value={selectedTable8}
+            onChange={(e) => applyTypicalRow(e.target.value)}
+          >
+            {MALE_EMKO_TABLE_8.map((row) => (
+              <option key={row.label} value={row.label}>
+                {row.label} (Ог3 {Math.round(row.chest3 / 10)} · От {Math.round(row.waist / 10)})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <p className="typical">
+          {nearest.exact ? 'Выбрана типовая фигура' : 'Ближайшая типовая фигура табл. 8'}:{' '}
+          <b>{nearest.row.label}</b> · Ог3 {Math.round(nearest.row.chest3 / 10)} см · От {Math.round(nearest.row.waist / 10)} см
+        </p>
+
+        <div className="buttons">
+          <button type="button" onClick={() => applyTypicalRow(selectedTable8)}>
+            Подставить типовые мерки
+          </button>
+        </div>
+
+        <h3>Ведущие признаки</h3>
+        {(['height', 'chest3', 'waist'] as const).map((id) => {
+          const meta = MALE_MEASUREMENT_META[id]
+          if (!meta) return null
+          return (
+            <label key={id} className="field" title={meta.hint}>
+              <span>
+                {meta.title} <span className="short">{meta.short} · {meta.gost}</span>
+              </span>
+              <CmInput
+                label={meta.title}
+                value={built[id]}
+                onChange={(v) => setMaleValue(id, v)}
+              />
+            </label>
+          )
+        })}
+
+        <h3>Остальные размерные признаки ({MALE_MEASUREMENT_IDS.length - 3})</h3>
+        {MALE_MEASUREMENT_IDS.filter((id) => id !== 'height' && id !== 'chest3' && id !== 'waist').map((id) => {
+          const meta = MALE_MEASUREMENT_META[id]
+          if (!meta) return null
+          const isExplicit = (figure.values as Record<string, number | undefined>)[id] !== undefined
+          return (
+            <label key={id} className={isExplicit ? 'field' : 'field typical'} title={meta.hint}>
+              <span>
+                {meta.title} <span className="short">{meta.short}{meta.gost ? ` · ${meta.gost}` : ''}</span>
+              </span>
+              <CmInput
+                label={meta.title}
+                value={built[id]}
+                onChange={(v) => setMaleValue(id, v)}
+              />
+            </label>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function FemaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
   const [mode, setMode] = useState<Mode>(() =>
     leadingOf(figure.values) && confirmedCount(figure) > 4 ? { kind: 'summary' } : { kind: 'start' },
   )
@@ -48,8 +180,6 @@ export function MeasurePage({ figure, onChange }: { figure: Figure; onChange: (f
         issues={issues}
         setValue={setValue}
         onNext={() => {
-          // The leading ones (and the waist, if entered) count as measured. Values that
-          // were only prefilled are recomputed: height or girths may have changed.
           const entered: MeasurementId[] = ['height', 'bust', 'hips']
           if (figure.values.waist !== undefined) entered.push('waist')
           const confirmed = [...new Set([...figure.confirmed, ...entered])]

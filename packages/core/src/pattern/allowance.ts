@@ -16,7 +16,7 @@ import {
   type Vec,
 } from '../draft/geom'
 import type { BBox, PieceLabel, PiecePath, Piece } from '../geometry'
-import { edgeLengths, fishLine, outlineOf, type Edge, type Panel } from './panel'
+import { edgeLengths, fishLine, outlineOf, type Edge, type Panel, type PanelRole } from './panel'
 
 /**
  * Seam and hem allowances, mm. `byEdge` overrides by edge name (neck, cap…).
@@ -30,16 +30,19 @@ export interface Allowances {
 
 export const DEFAULT_ALLOWANCES: Allowances = { seam: 10, hem: 30, byEdge: { neck: 7 } }
 
-export function allowanceOf(e: Edge, a: Allowances): number {
+const TRIM_ROLES = new Set<PanelRole>(['collar', 'collarStand', 'cuff', 'placket'])
+
+export function allowanceOf(e: Edge, a: Allowances, role?: PanelRole): number {
   if (e.kind === 'fold') return 0
   const own = a.byEdge?.[e.id]
   if (own !== undefined) return own
-  return e.kind === 'hem' ? a.hem : a.seam
+  if (e.kind === 'hem' && (!role || !TRIM_ROLES.has(role))) return a.hem
+  return a.seam
 }
 
-/** Edge names that get a notch where a construction level (waist, hip…) crosses them. */
-const LEVEL_NOTCH_EDGES = new Set(['side', 'princess', 'cb', 'inseam'])
-const LEVEL_NOTCH_LEVELS = ['waist', 'hip', 'knee'] as const
+/** Edge names that get a notch where a construction level (waist, hip, elbow…) crosses them. */
+const LEVEL_NOTCH_EDGES = new Set(['side', 'princess', 'cb', 'inseam', 'seamBack'])
+const LEVEL_NOTCH_LEVELS = ['waist', 'hip', 'knee', 'elbow'] as const
 
 interface OffSeg {
   p: Vec
@@ -119,17 +122,17 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
       const M2 = leg2.line.end
       const theta = angleBetween(sub(M1, T), sub(M2, T))
       const press = e.dart.press
-      if (Math.abs(theta) < 0.3) {
+      if (!Number.isFinite(theta) || Math.abs(theta) < 0.3 || dist(M1, T) < 0.5 || dist(M2, T) < 0.5) {
         continue
       }
       if (press === 'b') {
-        const aB = allowanceOf(B, allow)
+        const aB = allowanceOf(B, allow, panel.role)
         const t = B.line.tangentAt(0, 0)
         const nB = mul(outward(t, ccw), aB)
         const LB: OffSeg = { p: add(M2, nB), q: add(add(M2, nB), mul(t, 10)) }
         groups.push([rotateSeg(LB, -theta, T), reflectSeg(LB, T, M2)])
       } else {
-        const aA = allowanceOf(A, allow)
+        const aA = allowanceOf(A, allow, panel.role)
         const last = A.line.segs.length - 1
         const t = A.line.tangentAt(last, 1)
         const nA = mul(outward(t, ccw), aA)
@@ -138,28 +141,28 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
       }
       continue
     }
-    groups.push(edgeOffsets(e, allowanceOf(e, allow), ccw))
+    groups.push(edgeOffsets(e, allowanceOf(e, allow, panel.role), ccw))
     // Mirrored corner where a seam meets the hem: the folded-up hem allowance
     // must follow the seam allowance.
     const next = edges[(i + 1) % n]!
     const prevE = edges[(i - 1 + n) % n]!
-    const aE = allowanceOf(e, allow)
+    const aE = allowanceOf(e, allow, panel.role)
     const square = (d1: Vec, d2: Vec) => Math.abs(Math.abs(angleBetween(d1, d2)) - 90) < 3
-    if (e.kind === 'seam' && next.kind === 'hem' && aE > 0 && allowanceOf(next, allow) > 0 &&
+    if (e.kind === 'seam' && next.kind === 'hem' && aE > 0 && allowanceOf(next, allow, panel.role) > 0 &&
         !square(e.line.tangentAt(e.line.segs.length - 1, 1), next.line.tangentAt(0, 0))) {
       const last = groups[groups.length - 1]!
       const hemDir = next.line.tangentAt(0, 0)
       const H0 = next.line.start
-      groups.push([{ ...reflectSeg(last[last.length - 1]!, H0, add(H0, hemDir)), cap: 2 * allowanceOf(next, allow) + aE }])
+      groups.push([{ ...reflectSeg(last[last.length - 1]!, H0, add(H0, hemDir)), cap: 2 * allowanceOf(next, allow, panel.role) + aE }])
     }
-    if (e.kind === 'seam' && prevE.kind === 'hem' && aE > 0 && allowanceOf(prevE, allow) > 0 &&
+    if (e.kind === 'seam' && prevE.kind === 'hem' && aE > 0 && allowanceOf(prevE, allow, panel.role) > 0 &&
         !square(e.line.tangentAt(0, 0), prevE.line.tangentAt(prevE.line.segs.length - 1, 1))) {
       const first = groups[groups.length - 1]![0]!
       const ls = prevE.line.segs.length - 1
       const hemDir = prevE.line.tangentAt(ls, 1)
       const H1 = prevE.line.end
       // Insert before this edge's offsets.
-      groups.splice(groups.length - 1, 0, [{ ...reflectSeg(first, H1, add(H1, hemDir)), cap: 2 * allowanceOf(prevE, allow) + aE }])
+      groups.splice(groups.length - 1, 0, [{ ...reflectSeg(first, H1, add(H1, hemDir)), cap: 2 * allowanceOf(prevE, allow, panel.role) + aE }])
     }
   }
 
@@ -177,12 +180,30 @@ export function cutLine(panel: Panel, allow: Allowances): Vec[] {
     // Miter limit: a very sharp corner is cut off instead of a long spike.
     const ref = ends.length ? ends : [x]
     const d = Math.min(...ref.map((r) => dist(x, r)))
+    const maxSeg = Math.max(dist(s.p, s.q), dist(t.p, t.q))
     const cap = Math.min(s.cap ?? Infinity, t.cap ?? Infinity)
-    const limit = Number.isFinite(cap) ? cap : s.free || t.free ? 150 : Math.max(25, 3 * Math.max(dist(s.p, s.q), dist(t.p, t.q)))
-    if (d > limit) out.push(...ends)
+    const limit = Number.isFinite(cap) ? cap : s.free || t.free ? 120 : Math.min(120, Math.max(25, 3 * maxSeg))
+    if (d > limit || dist(x, mid(s.p, s.q)) > maxSeg * 2.5 + 40) out.push(...ends)
     else out.push(x)
   }
-  return removeLoops(dedupe(out))
+  const cleaned = removeLoops(dedupe(out.filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y))), 6)
+  if (cleaned.length >= 3 && Math.abs(signedArea(cleaned)) >= Math.abs(signedArea(outlineOf(panel).points(8)))) {
+    return cleaned
+  }
+  const fallback = dedupe(
+    outlineOf(panel)
+      .points(16)
+      .filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y)),
+  )
+  if (fallback.length < 3) return cleaned
+  const fCcw = signedArea(fallback) > 0
+  return fallback.map((pt, idx) => {
+    const prev = fallback[(idx - 1 + fallback.length) % fallback.length]!
+    const nxt = fallback[(idx + 1) % fallback.length]!
+    const n = add(outward(sub(pt, prev), fCcw), outward(sub(nxt, pt), fCcw))
+    const lenN = Math.hypot(n.x, n.y)
+    return lenN > 1e-9 ? add(pt, mul(v(n.x / lenN, n.y / lenN), allow.seam)) : pt
+  })
 }
 
 /** Proper intersection of segments ab and cd, if any. */
@@ -201,12 +222,13 @@ function segX(a: Vec, b: Vec, c: Vec, d: Vec): Vec | undefined {
  * Small self-intersection loops appear where an allowance is offset around a
  * tight concave bend or a cusp of the seam line; cut them out.
  */
-function removeLoops(pts: Vec[], window = 40): Vec[] {
+function removeLoops(pts: Vec[], window = 6): Vec[] {
   const out = [...pts]
-  for (let i = 0; i < out.length - 1; i++) {
+  for (let i = 0; i < out.length - 1 && out.length > 4; i++) {
     for (let j = Math.min(out.length - 2, i + window); j >= i + 2; j--) {
+      if (out.length - (j - i) < 4) continue
       const x = segX(out[i]!, out[i + 1]!, out[j]!, out[j + 1]!)
-      if (x) {
+      if (x && Number.isFinite(x.x) && Number.isFinite(x.y)) {
         out.splice(i + 1, j - i, x)
         break
       }
@@ -279,7 +301,7 @@ export function cutPiece(panel: Panel, allow: Allowances = DEFAULT_ALLOWANCES, i
       const tip = dartTip(e, leg2)
       seamParts.push(poly([e.line.start, tip, leg2.line.end]).d())
       // Notches at the dart mouths along the legs, a cross at the tip.
-      const a = allowanceOf(edges[(i - 1 + edges.length) % edges.length]!, allow)
+      const a = allowanceOf(edges[(i - 1 + edges.length) % edges.length]!, allow, panel.role)
       for (const m of [e.line.start, leg2.line.end]) {
         const u = norm(sub(m, e.line.end))
         marks.push(new Line(add(m, mul(u, a))).to(add(m, mul(u, Math.max(0, a - 6)))))
@@ -296,7 +318,7 @@ export function cutPiece(panel: Panel, allow: Allowances = DEFAULT_ALLOWANCES, i
   }
 
   for (const nt of notchesOf(panel)) {
-    const a = allowanceOf(nt.edge, allow)
+    const a = allowanceOf(nt.edge, allow, panel.role)
     const { p, n } = edgeFrame(nt.edge, nt.at, ccw)
     const tan = v(-n.y, n.x)
     const offs = nt.double ? [-2.5, 2.5] : [0]
@@ -316,8 +338,10 @@ export function cutPiece(panel: Panel, allow: Allowances = DEFAULT_ALLOWANCES, i
   lines.push(panel.method)
   if (info.figure) lines.push(info.figure)
   const byEdge = Object.entries(allow.byEdge ?? {}).filter(([id]) => panel.edges.some((e) => e.id === id))
+  const hasHem = panel.edges.some((e) => e.kind === 'hem') && !TRIM_ROLES.has(panel.role)
   lines.push(
-    `Припуски: швы ${cmText(allow.seam)}, низ ${cmText(allow.hem)}` +
+    `Припуски: швы ${cmText(allow.seam)}` +
+      (hasHem ? `, низ ${cmText(allow.hem)}` : '') +
       byEdge.map(([id, mm]) => `, ${EDGE_TITLES[id] ?? id} ${cmText(mm)}`).join(''),
   )
   const labels: PieceLabel[] = [
@@ -342,6 +366,7 @@ export function cutPiece(panel: Panel, allow: Allowances = DEFAULT_ALLOWANCES, i
 
 export const EDGE_TITLES: Record<string, string> = {
   neck: 'горловина',
+  collar: 'воротник',
   shoulder: 'плечо',
   armhole: 'пройма',
   side: 'бок',

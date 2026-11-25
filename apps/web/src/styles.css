@@ -348,3 +348,25 @@ main, .page, .page > * { min-width: 0; }
 @media (max-width: 520px) { .tabs { gap: 3px; padding-inline: 12px; } .tabs button { font-size: 13px; } }
 @media (max-width: 380px) { .tabs button { font-size: 12px; padding-inline: 2px; } }
 .hint a { color: var(--accent); }
+
+.gender-switch {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 2px;
+  gap: 2px;
+}
+.gender-switch button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.gender-switch button.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}

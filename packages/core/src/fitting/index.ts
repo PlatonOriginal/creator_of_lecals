@@ -12,7 +12,7 @@
  * is an error in the formulas, not in the measurements. `repeatedFixes`
  * finds those.
  */
-import { BLOCKS } from '../blocks'
+import { ALL_BLOCKS } from '../blocks'
 import { METHODS, SILHOUETTES, type GarmentKind, type MethodId, type Silhouette } from '../blocks/types'
 import { EASE_VERDICTS, type EaseVerdict, type FitLevelId } from '../fitmap'
 import { MEASUREMENT_LIST, type MeasurementSet } from '../measurements'
@@ -65,6 +65,38 @@ export const FIT_ZONES: Record<GarmentKind, FitZone[]> = {
     Z('knee', 'Колено'),
     Z('legWidth', 'Ширина низа'),
     Z('length', 'Длина'),
+  ],
+  shirt: [
+    Z('neck', 'Горловина / воротник'),
+    Z('shoulder', 'Плечевой шов'),
+    Z('armhole', 'Пройма'),
+    Z('sleeveCap', 'Окат рукава'),
+    Z('sleeve', 'Рукав: ширина'),
+    Z('sleeveLength', 'Рукав: длина / манжета'),
+    Z('chest', 'Грудь'),
+    Z('back', 'Спинка: ширина, лопатки'),
+    Z('front', 'Полочка / планка'),
+    Z('balance', 'Баланс переда и спинки'),
+    Z('waist', 'Талия'),
+    Z('hips', 'Бёдра'),
+    Z('side', 'Боковой шов'),
+    Z('length', 'Длина изделия'),
+  ],
+  jacket: [
+    Z('neck', 'Горловина / воротник'),
+    Z('shoulder', 'Плечевой шов'),
+    Z('armhole', 'Пройма'),
+    Z('sleeveCap', 'Окат рукава'),
+    Z('sleeve', 'Рукав: ширина'),
+    Z('sleeveLength', 'Рукав: длина'),
+    Z('chest', 'Грудь'),
+    Z('back', 'Спинка: ширина, лопатки'),
+    Z('front', 'Полочка: ширина, борт'),
+    Z('balance', 'Баланс переда и спинки'),
+    Z('waist', 'Талия'),
+    Z('hips', 'Бёдра'),
+    Z('side', 'Боковой шов'),
+    Z('length', 'Длина изделия'),
   ],
 }
 
@@ -150,7 +182,7 @@ export interface BlockInfo {
 let blocksInfo: Map<string, BlockInfo> | undefined
 
 export function blockInfo(id: string): BlockInfo | undefined {
-  blocksInfo ??= new Map(BLOCKS.map((b) => [b.id, { title: b.title, garment: b.garment, method: b.method }]))
+  blocksInfo ??= new Map(ALL_BLOCKS.map((b) => [b.id, { title: b.title, garment: b.garment, method: b.method }]))
   return blocksInfo.get(id)
 }
 
@@ -355,7 +387,7 @@ export function fittingReport(entries: FittingEntry[], now = Date.now()): string
     if (e.notes?.trim()) out.push('**Заметки**', '', e.notes.trim(), '')
 
     const opts = Object.entries(e.model.options)
-    const block = BLOCKS.find((x) => x.id === e.model.block)
+    const block = ALL_BLOCKS.find((x) => x.id === e.model.block)
     if (opts.length && block) {
       const parts = opts
         .map(([id, v]) => {

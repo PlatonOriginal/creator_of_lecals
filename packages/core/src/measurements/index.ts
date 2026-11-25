@@ -1,6 +1,7 @@
 export * from './schema'
 export * from './typical'
 export * from './validate'
+export * from './male'
 import type { Measurements } from './schema'
 import { typicalFigure } from './typical'
 

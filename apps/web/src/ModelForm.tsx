@@ -1,11 +1,22 @@
 import type { GarmentKind, ModelSpec, NeckShape } from '@lecals/core'
 import { CmInput } from './CmInput'
+import type { GenderMode } from './maleUi'
 
 /**
  * Modelling steps for one garment type. Every control maps to one field of
  * the model's spec; leaving a field empty keeps the block as it is.
  */
-export function ModelForm({ garment, spec, onChange }: { garment: GarmentKind; spec: ModelSpec; onChange: (s: ModelSpec) => void }) {
+export function ModelForm({
+  garment,
+  spec,
+  onChange,
+  gender = 'female',
+}: {
+  garment: GarmentKind
+  spec: ModelSpec
+  onChange: (s: ModelSpec) => void
+  gender?: GenderMode
+}) {
   const set = (patch: Partial<ModelSpec>) => onChange({ ...spec, ...patch })
   const flare = spec.flare ?? { darts: 0, side: 0, princess: 0, slashes: 0 }
   const setFlare = (p: Partial<NonNullable<ModelSpec['flare']>>) => set({ flare: { ...flare, ...p } })
@@ -18,6 +29,19 @@ export function ModelForm({ garment, spec, onChange }: { garment: GarmentKind; s
   )
 
   if (garment === 'trousers') return <>{length}</>
+
+  if (gender === 'male') {
+    return (
+      <>
+        {length}
+        <label className="field">
+          <span>Расширение по бокам (на каждом шве)</span>
+          <CmInput label="Расширение по бокам" value={flare.side} onChange={(v) => setFlare({ side: v ?? 0 })} />
+        </label>
+        <p className="hint">Для мужских конструкций доступны корректировка длины и бокового расширения.</p>
+      </>
+    )
+  }
 
   if (garment === 'skirt')
     return (
