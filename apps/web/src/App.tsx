@@ -5,7 +5,7 @@ import { loadFigure, saveFigure } from './figureStore'
 import { LibraryPage } from './LibraryPage'
 import { FittingsPage } from './FittingsPage'
 import { loadCurrentModel, saveCurrentModel } from './modelStore'
-import type { GenderMode } from './maleUi'
+import { isMaleBlockId, type GenderMode } from './maleUi'
 
 // Three.js and the body model are loaded only when the mannequin tab opens.
 const BodyPage = lazy(() => import('./BodyPage').then((m) => ({ default: m.BodyPage })))
@@ -74,18 +74,29 @@ export function App() {
             <LibraryPage
               figure={figure}
               model={model}
+              gender={gender}
               onOpenFigure={(f) => {
                 setFigure(f)
                 setTab('measure')
               }}
               onOpenModel={(m) => {
-                setModel(m)
+                const nextGender: GenderMode = m.gender ?? (isMaleBlockId(m.block) ? 'male' : 'female')
+                setGender(nextGender)
+                setModel({ ...m, gender: nextGender })
                 setTab('pattern')
               }}
             />
           )}
-          {tab === 'fittings' && <FittingsPage figure={figure} model={model} />}
-          {tab === 'body' && <BodyPage figure={figure} onChange={setFigure} onOpenMeasurements={() => setTab('measure')} model={model} />}
+          {tab === 'fittings' && <FittingsPage figure={figure} model={model} gender={gender} />}
+          {tab === 'body' && (
+            <BodyPage
+              figure={figure}
+              onChange={setFigure}
+              onOpenMeasurements={() => setTab('measure')}
+              model={model}
+              gender={gender}
+            />
+          )}
         </Suspense>
       </main>
     </div>

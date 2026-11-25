@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  BLOCKS,
   EASE_VERDICTS,
   FIX_ACTIONS,
   METHODS,
@@ -27,6 +26,7 @@ import { CmInput } from './CmInput'
 import { draftProfile } from './draftModel'
 import type { Figure } from './figureStore'
 import { deleteFitting, listFittings, newId, putFitting, type ModelDoc } from './library'
+import { ALL_BLOCKS, isMaleBlockId, type GenderMode } from './maleUi'
 
 const GUIDE_URL = './guide.html'
 
@@ -46,13 +46,17 @@ function download(text: string, name: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
-/** A log entry for the model open now: snapshot of the measurements, the model and the ease map it gives. */
-function newEntry(model: ModelDoc, figure: Figure, count: number): FittingEntry {
-  const drafted = draftProfile(model, figure.values)
-  const block = BLOCKS.find((b) => b.id === model.block) ?? BLOCKS[0]!
-  // The measurements the pattern was drafted with: the block's own, taken or typical, plus anything else she took.
+function newEntry(model: ModelDoc, figure: Figure, count: number, gender: GenderMode): FittingEntry {
+  const activeGender: GenderMode = model.gender ?? (isMaleBlockId(model.block) ? 'male' : gender)
+  const drafted = draftProfile({ ...model, gender: activeGender }, figure.values)
+  const block = ALL_BLOCKS.find((b) => b.id === model.block) ?? ALL_BLOCKS[0]!
   const measurements: MeasurementSet = { ...figure.values }
-  if (drafted) for (const id of block.required) measurements[id] = drafted.m[id]
+  if (drafted) {
+    for (const id of block.required) {
+      const val = (drafted.m as Record<string, number | undefined>)[id]
+      if (val !== undefined) (measurements as Record<string, number>)[id] = val
+    }
+  }
   const now = Date.now()
   return {
     id: newId(),
@@ -68,12 +72,15 @@ function newEntry(model: ModelDoc, figure: Figure, count: number): FittingEntry 
   }
 }
 
-/**
- * Stage M5: the log of mock-ups. For each one the sewist notes what she had
- * to change and how the fit felt against the ease map; the log goes to the
- * developer as a file or a report.
- */
-export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDoc }) {
+export function FittingsPage({
+  figure,
+  model,
+  gender = 'female',
+}: {
+  figure: Figure
+  model: ModelDoc
+  gender?: GenderMode
+}) {
   const [entries, setEntries] = useState<FittingEntry[]>([])
   const [openId, setOpenId] = useState<string>()
   const [status, setStatus] = useState('')
@@ -89,7 +96,6 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
 
   const open = entries.find((e) => e.id === openId)
 
-  // Edits are saved at once: the sewist may close the tab in the middle of a fitting.
   function update(e: FittingEntry) {
     const next = { ...e, updated: Date.now() }
     setEntries((l) => l.map((x) => (x.id === e.id ? next : x)))
@@ -97,7 +103,7 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
   }
 
   async function create() {
-    const e = newEntry(model, figure, entries.length)
+    const e = newEntry(model, figure, entries.length, gender)
     try {
       await putFitting(e)
       setEntries((l) => [e, ...l])
@@ -129,7 +135,7 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
 
   const stamp = new Date().toISOString().slice(0, 10)
   const repeated = repeatedFixes(entries)
-  const block = BLOCKS.find((b) => b.id === model.block)
+  const block = ALL_BLOCKS.find((b) => b.id === model.block)
 
   return (
     <section className="page library fittings">
@@ -149,7 +155,7 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
         </p>
         <ul className="lib">
           {entries.map((e) => {
-            const b = blockInfo(e.model.block)
+            const b = blockInfo(e.model.block) ?? ALL_BLOCKS.find((x) => x.id === e.model.block)
             return (
               <li key={e.id} className={e.id === openId ? 'current' : ''}>
                 <div>
@@ -211,7 +217,7 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
             <p className="hint">Правка, которая повторяется на разных фигурах, скорее всего говорит об ошибке в формулах.</p>
             <ul className="lib">
               {repeated.map((r) => {
-                const b = blockInfo(r.block)
+                const b = blockInfo(r.block) ?? ALL_BLOCKS.find((x) => x.id === r.block)
                 return (
                   <li key={`${r.block}-${r.zone}-${r.action}`}>
                     <div>
@@ -238,7 +244,7 @@ export function FittingsPage({ figure, model }: { figure: Figure; model: ModelDo
 }
 
 function EntryEditor({ entry: e, onChange }: { entry: FittingEntry; onChange: (e: FittingEntry) => void }) {
-  const b = blockInfo(e.model.block)
+  const b = blockInfo(e.model.block) ?? ALL_BLOCKS.find((x) => x.id === e.model.block)
   const zones = b ? zonesOf(b.garment) : zonesOf('dress')
   const set = (patch: Partial<FittingEntry>) => onChange({ ...e, ...patch })
   const setFix = (f: FitFix) => set({ fixes: e.fixes.map((x) => (x.id === f.id ? f : x)) })

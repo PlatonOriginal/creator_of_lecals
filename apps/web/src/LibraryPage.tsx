@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BLOCKS, METHODS } from '@lecals/core'
+import { METHODS } from '@lecals/core'
 import type { Figure } from './figureStore'
 import {
   deleteFigure,
@@ -11,6 +11,7 @@ import {
   type FigureDoc,
   type ModelDoc,
 } from './library'
+import { ALL_BLOCKS, isMaleBlockId, type GenderMode } from './maleUi'
 
 const date = (t: number) => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 const cm = (mm?: number) => (mm === undefined ? '—' : (Math.round(mm) / 10).toLocaleString('ru-RU'))
@@ -23,16 +24,19 @@ const cm = (mm?: number) => (mm === undefined ? '—' : (Math.round(mm) / 10).to
 export function LibraryPage({
   figure,
   model,
+  gender = 'female',
   onOpenFigure,
   onOpenModel,
 }: {
   figure: Figure
   model: ModelDoc
+  gender?: GenderMode
   onOpenFigure: (f: Figure) => void
   onOpenModel: (m: ModelDoc) => void
 }) {
   const [figures, setFigures] = useState<FigureDoc[]>([])
   const [models, setModels] = useState<ModelDoc[]>([])
+  const [filterGender, setFilterGender] = useState<'all' | GenderMode>('all')
   const [error, setError] = useState('')
   const [name, setName] = useState('')
 
@@ -48,18 +52,21 @@ export function LibraryPage({
   }, [])
 
   async function saveFigure() {
-    const n = name.trim() || `Фигура: рост ${cm(figure.values.height)}, Ог ${cm(figure.values.bust)}`
+    const chest = figure.values.bust ?? (figure.values as Record<string, number | undefined>).chest3
+    const n = name.trim() || `Фигура: рост ${cm(figure.values.height)}, Ог ${cm(chest)}`
     await putFigure({ id: newId(), name: n, figure, updated: Date.now() })
     setName('')
     await reload()
   }
 
   function asBase(m: ModelDoc) {
+    const docGender: GenderMode = m.gender ?? (isMaleBlockId(m.block) ? 'male' : 'female')
     onOpenModel({
       ...m,
       id: newId(),
       name: `${m.name} — новая`,
       kind: 'model',
+      gender: docGender,
       layers: [...m.layers, {}],
       baseName: m.name,
       updated: Date.now(),
@@ -67,9 +74,13 @@ export function LibraryPage({
   }
 
   const blockTitle = (id: string) => {
-    const b = BLOCKS.find((x) => x.id === id)
+    const b = ALL_BLOCKS.find((x) => x.id === id)
     return b ? `${b.title} · ${METHODS[b.method]}` : id
   }
+
+  const modelGender = (m: ModelDoc): GenderMode => m.gender ?? (isMaleBlockId(m.block) ? 'male' : 'female')
+  const visibleModels = models.filter((m) => filterGender === 'all' || modelGender(m) === filterGender)
+  const chestDisplay = figure.values.bust ?? (figure.values as Record<string, number | undefined>).chest3
 
   return (
     <section className="page library">
@@ -77,7 +88,7 @@ export function LibraryPage({
         <h2>Фигуры</h2>
         {error && <p className="errors">{error}</p>}
         <label className="field">
-          <span>Сохранить текущие мерки как</span>
+          <span>Сохранить текущие мерки ({gender === 'male' ? 'муж.' : 'жен.'}) как</span>
           <input className="text" placeholder="Имя (например, Анна)" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="buttons">
@@ -86,23 +97,26 @@ export function LibraryPage({
           </button>
         </div>
         <ul className="lib">
-          {figures.map((f) => (
-            <li key={f.id}>
-              <div>
-                <b>{f.name}</b>
-                <span className="hint">
-                  {' '}
-                  рост {cm(f.figure.values.height)}, Ог {cm(f.figure.values.bust)}, Об {cm(f.figure.values.hips)} · {date(f.updated)}
-                </span>
-              </div>
-              <div className="row-buttons">
-                <button onClick={() => onOpenFigure(f.figure)}>Открыть</button>
-                <button className="secondary" onClick={() => void deleteFigure(f.id).then(reload)}>
-                  Удалить
-                </button>
-              </div>
-            </li>
-          ))}
+          {figures.map((f) => {
+            const c = f.figure.values.bust ?? (f.figure.values as Record<string, number | undefined>).chest3
+            return (
+              <li key={f.id}>
+                <div>
+                  <b>{f.name}</b>
+                  <span className="hint">
+                    {' '}
+                    рост {cm(f.figure.values.height)}, Ог {cm(c)}, Об {cm(f.figure.values.hips)} · {date(f.updated)}
+                  </span>
+                </div>
+                <div className="row-buttons">
+                  <button onClick={() => onOpenFigure(f.figure)}>Открыть</button>
+                  <button className="secondary" onClick={() => void deleteFigure(f.id).then(reload)}>
+                    Удалить
+                  </button>
+                </div>
+              </li>
+            )
+          })}
           {!figures.length && <li className="hint">Пока нет сохранённых фигур.</li>}
         </ul>
       </div>
@@ -113,16 +127,24 @@ export function LibraryPage({
           Модель хранится как основа, методика, приёмы и параметры, а не как готовый чертёж: при открытии она
           пересчитывается по текущим меркам. Сейчас открыта «{model.name}». Сохранить её можно во вкладке «Выкройка».
         </p>
+        <label className="field">
+          <span>Фильтр по режиму</span>
+          <select value={filterGender} onChange={(e) => setFilterGender(e.target.value as 'all' | GenderMode)}>
+            <option value="all">Все</option>
+            <option value="female">Женский</option>
+            <option value="male">Мужской</option>
+          </select>
+        </label>
         {(['base', 'model'] as const).map((kind) => (
           <div key={kind}>
             <h3>{kind === 'base' ? 'Основы' : 'Модели'}</h3>
             <ul className="lib">
-              {models
+              {visibleModels
                 .filter((m) => m.kind === kind)
                 .map((m) => (
                   <li key={m.id}>
                     <div>
-                      <b>{m.name}</b>
+                      <b>{m.name}</b> <span className="tag">{modelGender(m) === 'male' ? 'муж.' : 'жен.'}</span>
                       <span className="hint">
                         {' '}
                         {blockTitle(m.block)}
@@ -140,10 +162,11 @@ export function LibraryPage({
                     </div>
                   </li>
                 ))}
-              {!models.some((m) => m.kind === kind) && <li className="hint">Пока пусто.</li>}
+              {!visibleModels.some((m) => m.kind === kind) && <li className="hint">Пока пусто.</li>}
             </ul>
           </div>
         ))}
+        {chestDisplay !== undefined && null}
       </div>
     </section>
   )

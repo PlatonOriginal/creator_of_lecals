@@ -26,6 +26,7 @@ import { CmInput } from './CmInput'
 import type { Figure } from './figureStore'
 import type { ModelDoc } from './library'
 import { draftProfile, filledMeasurements } from './draftModel'
+import { isMaleBlockId, type GenderMode } from './maleUi'
 
 const PHENOTYPE_SLIDERS: { id: keyof Phenotypes; title: string }[] = [
   { id: 'height', title: 'Рост' },
@@ -51,13 +52,18 @@ const LOCAL_SLIDERS: { id: string; title: string }[] = [
 
 const DEFAULT_PHENOTYPES: Phenotypes = FEMALE_BASE
 
-/**
- * The measurements the mannequin is fitted to, or undefined without a height.
- * With height, bust and hips the gaps are filled from the typical figure,
- * as the «Выкройка» tab drafts with them; otherwise only what was entered.
- */
-function fitTarget(f: Figure): FitTarget | undefined {
+function fitTarget(f: Figure, gender: GenderMode): FitTarget | undefined {
   if (f.values.height === undefined) return undefined
+  if (gender === 'male') {
+    const chest3 = (f.values as Record<string, number | undefined>).chest3 ?? f.values.bust
+    const t: FitTarget = { height: f.values.height }
+    if (chest3 !== undefined) t.bust = chest3
+    if (f.values.waist !== undefined) t.waist = f.values.waist
+    if (f.values.hips !== undefined) t.hips = f.values.hips
+    if (f.values.neck !== undefined) t.neck = f.values.neck
+    if (f.values.upperArm !== undefined) t.upperArm = f.values.upperArm
+    return t
+  }
   const src = leadingOf(f.values) ? filledMeasurements(f.values) : f.values
   const t: FitTarget = { height: f.values.height }
   for (const k of Object.keys(FIT_LOCAL) as FitKey[]) if (src[k] !== undefined) t[k] = src[k]
@@ -66,7 +72,6 @@ function fitTarget(f: Figure): FitTarget | undefined {
 
 type FitRowId = 'height' | FitKey
 
-/** Rows of the table: what is fitted, in the order of the measurement wizard. Editable: the leading ones. */
 const FIT_ROWS: { id: FitRowId; edit?: boolean; approx?: boolean }[] = [
   { id: 'height', edit: true },
   { id: 'bust', edit: true },
@@ -105,11 +110,13 @@ export function BodyPage({
   onChange,
   onOpenMeasurements,
   model,
+  gender = 'female',
 }: {
   figure: Figure
   onChange: (f: Figure) => void
   onOpenMeasurements: () => void
   model: ModelDoc
+  gender?: GenderMode
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<BodyViewer | null>(null)
@@ -131,12 +138,13 @@ export function BodyPage({
   const shellRef = useRef<Shell | null>(null)
   const [cloth, setCloth] = useState(false)
   const [clothStats, setClothStats] = useState<ClothStats | null>(null)
-  const target = fitTarget(figure)
-  // Refit only once typing has paused: a fit takes a second or more on a phone.
+  const target = fitTarget(figure, gender)
   const targetKey = useDebounced(JSON.stringify(target ?? null), 800)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
   const [fps, setFps] = useState(0)
+
+  const activeGender: GenderMode = model.gender ?? (isMaleBlockId(model.block) ? 'male' : gender)
 
   useEffect(() => {
     const viewer = createBodyViewer(canvasRef.current!)
@@ -185,7 +193,6 @@ export function BodyPage({
     viewer.updatePositions(v)
     const ms = performance.now() - t
     setStats((s) => (s ? { ...s, recomputeMs: ms } : s))
-    // Measure the mannequin as it is now, after the sliders settle.
     const timer = setTimeout(() => {
       try {
         const L = bodyLandmarks({ vertices: v, faces: body.faces }, regionsRef.current!)
@@ -199,9 +206,6 @@ export function BodyPage({
     return () => clearTimeout(timer)
   }, [phen, local, scale, loaded])
 
-  // Fit the mannequin to the measurements once the body is loaded and whenever
-  // they change, in a worker (a few seconds on a phone); on the main thread
-  // if workers are not available.
   const workerRef = useRef<Worker | null>(null)
   useEffect(() => {
     try {
@@ -238,7 +242,6 @@ export function BodyPage({
       worker.addEventListener('message', onMessage)
       worker.postMessage({ id, baseUrl: new URL('./body/', document.baseURI).href, target: t })
     } else {
-      // Let the «Подбираю…» overlay paint before the fit blocks the main thread.
       timer = window.setTimeout(() => apply(fitBody(body, t)), 30)
     }
     return () => {
@@ -248,14 +251,13 @@ export function BodyPage({
     }
   }, [loaded, targetKey, refit])
 
-  // The model on the mannequin: rings of the pattern, the ease map and the shell.
   const drafted = useMemo(() => {
     try {
-      return showModel ? draftProfile(model, figure.values) : undefined
+      return showModel ? draftProfile({ ...model, gender: activeGender }, figure.values) : undefined
     } catch {
       return undefined
     }
-  }, [showModel, model, figure.values])
+  }, [showModel, model, activeGender, figure.values])
   const levels: FitLevel[] = useMemo(() => (drafted ? fitLevels(drafted.profile, drafted.m) : []), [drafted])
 
   useEffect(() => {
@@ -267,9 +269,8 @@ export function BodyPage({
     if (!drafted) {
       shellRef.current = null
       viewer.setShell(null)
-      // Without a model: the girth lines of the body.
       const lines: [keyof Landmarks['rings'], string][] = [
-        ['bust', 'Ог3'],
+        ['bust', activeGender === 'male' ? 'Ог3' : 'Ог3'],
         ['waist', 'От'],
         ['hips', 'Об'],
       ]
@@ -292,11 +293,10 @@ export function BodyPage({
       bands.push({ points: b.points, labelAt: b.labelAt, color: EASE_VERDICTS[l.verdict].color, label: `${l.title} ${signedCm(l.ease)}` })
     }
     viewer.setBands(bands)
-  }, [landmarks, drafted, levels])
+  }, [landmarks, drafted, levels, activeGender])
 
   useEffect(() => viewerRef.current?.setShellVisible(showShell), [showShell])
 
-  // Cloth experiment: the skirt part of the shell falls under gravity, one step a frame, for 5 s.
   useEffect(() => {
     const viewer = viewerRef.current
     const shell = shellRef.current
@@ -359,7 +359,7 @@ export function BodyPage({
         </div>
       </div>
       <div className="panel">
-        <h2>Манекен по меркам</h2>
+        <h2>Манекен по меркам ({activeGender === 'male' ? 'мужской режим' : 'женский режим'})</h2>
         {!target && (
           <p className="hint">
             Введите рост (и, если есть, обхваты) здесь или во вкладке «Мерки», и манекен подстроится под них.{' '}
@@ -509,7 +509,6 @@ export function BodyPage({
   )
 }
 
-/** The ease map panel: the model on the mannequin, level by level. */
 function FitMap({
   model,
   drafted,
@@ -591,7 +590,6 @@ function FitMap({
   )
 }
 
-/** A slider with a number box: shows the current value in percent and accepts typed values. */
 function Slider({
   title,
   min,
@@ -609,7 +607,6 @@ function Slider({
   const [text, setText] = useState(String(pct))
   useEffect(() => {
     if (Number(text) !== pct) setText(String(pct))
-    // Only follow outside changes; typing is handled below.
   }, [pct])
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
   return (
