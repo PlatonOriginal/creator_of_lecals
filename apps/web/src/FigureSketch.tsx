@@ -90,7 +90,7 @@ const FEMALE_OVERLAYS: Record<MeasurementId, Overlay> = {
 
 export type MaleSketchId = MeasurementId | keyof MaleMeasurements
 
-const MALE_OVERLAYS: Record<MaleSketchId, Overlay> = {
+const MALE_OVERLAYS: Partial<Record<MaleSketchId, Overlay>> = {
   ...FEMALE_OVERLAYS,
   height: { view: 'front', shapes: [{ line: [[184, 10], [184, 412]], ends: true }] },
   chest3: { view: 'front', shapes: [{ girth: [100, 124, 43] }] },

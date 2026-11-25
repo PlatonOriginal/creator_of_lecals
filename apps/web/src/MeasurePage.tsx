@@ -51,7 +51,7 @@ export function MeasurePage({
 }
 
 function MaleMeasurePage({ figure, onChange }: { figure: Figure; onChange: (f: Figure) => void }) {
-  const [mode, setMode] = useState<Mode>('start')
+  const [mode, setMode] = useState<Mode>({ kind: 'start' })
   const [selectedTable8, setSelectedTable8] = useState<string>('176-100-88')
   const built = useMemo(() => buildMaleMeasurements(figure.values), [figure.values])
   const lead = useMemo(
