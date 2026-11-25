@@ -33,7 +33,7 @@ const RELATIONS: Relation[] = [
   { a: 'neck', b: 'chest1', level: 'error', message: 'Обхват шеи должен быть меньше обхвата груди первого' },
   { a: 'waist', b: 'chest3', level: 'warning', message: 'Обхват талии больше обхвата груди: так бывает у полных фигур, проверьте мерки' },
   { a: 'waist', b: 'hips', level: 'warning', message: 'Обхват талии больше обхвата бёдер: так бывает редко, проверьте мерки' },
-  { a: 'chest2', b: 'chest1', level: 'warning', message: 'Обхват груди второй обычно не меньше первого: спереди он идёт ниже, через сосковые точки' },
+  { a: 'chest1', b: 'chest2', level: 'warning', message: 'Обхват груди второй обычно не меньше первого: спереди он идёт ниже, через сосковые точки' },
   { a: 'chestPointDistance', b: 'chestWidth', level: 'error', message: 'Расстояние между сосковыми точками не может быть больше ширины груди' },
   { a: 'shoulderSlope', b: 'neckToRadial', level: 'error', message: 'Ширина плечевого ската должна быть меньше расстояния от шеи до лучевой точки' },
   { a: 'neckToRadial', b: 'neckToWrist', level: 'error', message: 'Расстояние от шеи до запястья должно быть больше расстояния до лучевой точки (локтя)' },
